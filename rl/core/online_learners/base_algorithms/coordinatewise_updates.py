@@ -30,14 +30,15 @@ class Adam(MirrorDescent):
 
 class Adagrad(MirrorDescent):
 
-    def __init__(self, x0, scheduler, eps=1e-3, rate=1.0):
+    def __init__(self, x0, scheduler, eps=1e-3, rate=1.0, eps2=1e-8):
         self._scheduler = scheduler
         prox = DiagQuad(1.0 / self._scheduler.stepsize)
         super().__init__(x0, prox)
         self._v = MomentMvAvg(np.full_like(self._h, eps), rate)
+        self._eps2 = eps2
 
     def adapt(self, g, w):
         self._scheduler.update()  # w goes to the update of self._v
         self._v.update((w * g)**2)
-        D = np.sqrt(self._v.val)
+        D = np.sqrt(self._v.val) + self._eps2
         self._breg.update(D / self._scheduler.stepsize)
