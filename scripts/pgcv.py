@@ -29,7 +29,8 @@ def main(c):
 
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function',
                               units=c['value_units'])
-    sim = create_sim_env(mdp.env, np.random.randint(0), dyn_units=c['dyn_units'])
+    sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
+                         dyn_units=c['dyn_units'])
 
     # Create algorithm
     alg = PolicyGradientWithTrajCV(policy, vfn,
@@ -50,7 +51,7 @@ CONFIG = {
         'envid': 'DartCartPole-v1',
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
-        'n_processes': 1,
+        'n_processes': 4,
     },
     'experimenter': {
         'run_kwargs': {
@@ -70,16 +71,16 @@ CONFIG = {
         'max_kl': 0.1,
         'delta': None,
         'lambd': 0.99,
-        'max_n_batches': 2,
-        'n_warm_up_itrs': None,
-        'n_pretrain_itrs': 1,
+        'max_n_batches': 2,  # for ae
+        'n_warm_up_itrs': None,  # policy nor update
+        'n_pretrain_itrs': 5,
         'or_kwargs': {
-            'cvtype': None,
+            'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 100,
-            'switch_from_cvtype_state_at_itr': 5
-        }
+            'n_ac_samples': 200,
+            'switch_from_cvtype_state_at_itr': None,
+        },
     },
     'policy_units': (64,),
     'value_units': (128, 128),

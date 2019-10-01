@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import pdb
 import copy
 import numpy as np
 from scipy import linalg as la
@@ -285,7 +286,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._sim = sim
         self._switch_from_cvtype_state_at_itr = switch_from_cvtype_state_at_itr
 
-        self._ac_dim, self._ob_dim = policy.y_dim, policy.x_dim
+        self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
         self._ro = None
 
         self._switched = False
@@ -296,7 +297,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         # Statistics.
         self._qmc = []
         self._vhat = []
-        self._trajcv_stats = TrajCVStats()
+        self._trajcv_stats = self.TrajCVStats()
 
     class TrajCVStats:
         def __init__(self):
@@ -328,9 +329,12 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._vhat = []
         self._trajcv_stats.clear()
         for rollout in self._ro:
+            # Count for the last rw, which is default vfn.
             decay = self._ae.delta ** np.arange(len(rollout))
             decay = np.triu(la.circulant(decay).T, k=0)
-            qmc = np.ravel(np.matmul(decay, rollout.rws[:, None]))  # T, Q function from MC samples
+            # Q function from MC samples, neglect the last rw, which is the default v
+            # (should be zero).
+            qmc = np.ravel(np.matmul(decay, rollout.rws[:-1, None]))  # T
             self._qmc.append(qmc)
             if self._cvtype == 'state':
                 vhat = np.ravel(self._ae.vfn.predict(rollout.obs_short))
@@ -360,16 +364,17 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         if update_dyn and self._cvtype == 'traj':
             obs_curr = np.concatenate([r.obs[:-1] for r in ro])
             obs_next = np.concatenate([r.obs[1:] for r in ro])
-            acs = self.preprocess_acs([r.acs for r in ro])
+            acs = np.concatenate([r.acs for r in ro])
+            acs = self.preprocess_acs(acs)
             inputs = np.hstack([obs_curr, acs])
             targets = obs_next - obs_curr
             _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(inputs, targets)
         return evs
 
     def preprocess_acs(self, acs):
-        # Use the outpus as inputs to dynamics model to ease learning. 
-        acs = np.clip(acs, **self._sim._action_clip)
-        acs = acs * self._sim._action_scale[:None]  # broadcasting to rows
+        # Use the outpus as inputs to dynamics model to ease learning.
+        acs = np.clip(acs, *self._sim._action_clip)
+        acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
         return acs
 
     def predict_vfns(self, obs, dones=None):
@@ -438,7 +443,6 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         g = -(gwocv - decur - defut) * scale
         return {'g': g, 'gwocv': gwocv, 'decur': decur, 'defut': defut}
 
-
     @property
     def ro(self):
-        return self._ro    
+        return self._ro
