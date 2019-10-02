@@ -61,7 +61,7 @@ CONFIG = {
             'save_freq': None,
         },
         'rollout_kwargs': {
-            'min_n_samples': 100,
+            'min_n_samples': 20,
             'max_n_rollouts': None,
         },
     },
@@ -74,7 +74,7 @@ CONFIG = {
         'lambd': 0.0,
         'max_n_batches': 2,  # for ae
         'n_warm_up_itrs': None,  # policy nor update
-        'n_pretrain_itrs': 3,
+        'n_pretrain_itrs': 1,
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,

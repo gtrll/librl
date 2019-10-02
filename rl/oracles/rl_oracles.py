@@ -280,11 +280,15 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._ae = ae
         self._avgtype = avgtype
         self._cvtype = cvtype
-        self._n_cv_steps = n_cv_steps
-        self._cv_decay = cv_decay
-        self._n_ac_samples = n_ac_samples
+        self._n_cv_steps = n_cv_steps  # number of difference estimators to use, starting from t
+        self._cv_decay = cv_decay  # additional decay for difference estimators for future steps
+        self._n_ac_samples = n_ac_samples  # number of MC samples for E_A
         self._sim = sim
-        self._switch_from_cvtype_state_at_itr = switch_from_cvtype_state_at_itr
+        # Warm up for 'traj' cvtype, first do 'state' for some iterations.
+        if cvtype == 'traj' and switch_from_cvtype_state_at_itr is not None:
+            self._switch_from_cvtype_state_at_itr = switch_from_cvtype_state_at_itr
+        else:
+            self._switch_from_cvtype_state_at_itr = None
 
         self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
         self._ro = None
@@ -294,51 +298,78 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             self._saved_cvtype = self._cvtype
             self._cvtype = 'state'
 
-        # Statistics.
-        self._qmc = []
-        self._vhat = []
-        self._trajcv_stats = self.TrajCVStats()
+        self._update_vfn = (cvtype != 'nocv')
+        self._update_dyn = (cvtype == 'traj')
 
-    class TrajCVStats:
-        def __init__(self):
-            self._attrs = ['oit', 'ait', 'qhatit', 'qhat', 'eqhat']
-            for a in self._attrs:
-                setattr(self, a, [])
-
-        def clear(self):
-            for a in self._attrs:
-                getattr(self, a).clear()
-
-        def append(self, **kwargs):
-            for a in self._attrs:
-                getattr(self, a).append(kwargs[a])
-
-    def update(self, ro, policy, update_vfn=True, update_dyn=True, itr=None, **kwargs):
-
+    def update(self, ro, policy, itr=None, **kwargs):
         if (itr is not None and self._switch_from_cvtype_state_at_itr is not None and
                 itr >= self._switch_from_cvtype_state_at_itr and not self._switched):
             print('Switch to fancy cv: {} from {}'.format(self._saved_cvtype, self._cvtype))
             self._cvtype = self._saved_cvtype
             self._switched = True
-
-        self._policy.assign(policy)
+        self._policy.assign(policy)  # NOTE sync BOTH variables and parameters
         self._ro = ro
 
-        # Collect the statistics along the rollouts.
-        self._qmc = []
-        self._vhat = []
-        self._trajcv_stats.clear()
+    def update_vfn_dyn_if_needed(self, ro, **kwargs):
+        evs = {'vfn_ev0': .0, 'vfn_ev1': .0, 'dyn_ev0': .0, 'dyn_ev1': .0}
+        if self._update_vfn:
+            _, evs['vfn_ev0'], evs['vfn_ev1'] = self._ae.update(ro, **kwargs)
+        if self._update_dyn:
+            obs_curr = np.concatenate([r.obs[:-1] for r in ro])
+            obs_next = np.concatenate([r.obs[1:] for r in ro])
+            acs = np.concatenate([r.acs for r in ro])
+            acs = self.preprocess_acs(acs)
+            _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(
+                np.hstack([obs_curr, acs]), obs_next, **kwargs)
+        return evs
+
+    def preprocess_acs(self, acs):
+        # Use the outpus as inputs to dynamics model to ease learning.
+        acs = np.clip(acs, *self._sim._action_clip)
+        # acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
+        return acs
+
+    def predict_vfns(self, obs, dones=None):
+        # Return a flat np array.
+        vs = np.ravel(self._ae.vfn.predict(obs))
+        if dones is not None:
+            vs[dones] = .0
+        return vs
+
+    def approximate_qfns(self, obs, acs):
+        # Return a flat np array.
+        assert len(obs) == len(acs)
+        acs = self.preprocess_acs(acs)
+        next_obs = self._sim._predict(np.hstack([obs, acs]))
+        rws = self._sim._batch_reward(obs, sts=None, acs=acs)
+        next_dones = self._sim._batch_is_done(next_obs)
+        vs = self.predict_vfns(next_obs, next_dones)
+        qs = rws + self._ae.delta * vs
+        return qs
+
+    def grad(self, x):
+        # Note that x is not used. _policy is set during update().
+        # g WithOut cv, Difference Estimators for the CURrent step and for the FUTure steps
+        gwocv, decur, defut = .0, .0, .0
+        # Go through rollout one by one.
         for rollout in self._ro:
+            # Gradient without CV: gwocv.
             # Count for the last rw, which is default vfn.
             decay = self._ae.delta ** np.arange(len(rollout))
             decay = np.triu(la.circulant(decay).T, k=0)
             # Q function from MC samples, neglect the last rw, which is the default v
             # (should be zero).
             qmc = np.ravel(np.matmul(decay, rollout.rws[:-1, None]))  # T
-            self._qmc.append(qmc)
-            if self._cvtype == 'state':
-                vhat = np.ravel(self._ae.vfn.predict(rollout.obs_short))
-                self._vhat.append(vhat)
+            gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T, mixing of G_t
+            qmc = gamma_decay * qmc  # element-wise
+            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, qmc)
+            gwocv += nqmc
+            # Difference estimators: decur and defut.
+            if self._cvtype == 'nocv':
+                pass
+            elif self._cvtype == 'state':
+                vhat = self.predict_vfns(rollout.obs_short)
+                decur += self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * vhat)
             elif self._cvtype == 'traj':
                 # Use np array operations to avoid another for loop over steps.
                 # CV for step t.
@@ -350,72 +381,15 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 a = self._policy.derandomize(o, r)  # I T x da
                 q = self.approximate_qfns(o, a)  # I T
                 # To reduce the variance of enqhat.
-                v = np.ravel(self._ae.vfn.predict(rollout.obs_short))  # T
-                v = np.repeat(v, self._n_ac_samples, axis=0)  # I T
+                v = self.predict_vfns(rollout.obs_short)
+                v = np.repeat(v, self._n_ac_samples)  # I T
                 eqhat = np.reshape(q, [len(rollout), self._n_ac_samples])  # T x I
                 eqhat = np.mean(eqhat, axis=1)  # T, take average
-                self._trajcv_stats.append(oit=o, ait=a, qhatit=q-v, qhat=qhat, eqhat=eqhat)
-
-        evs = {'vfn_ev0': .0, 'vfn_ev1': .0, 'dyn_ev0': .0, 'dyn_ev1': .0}
-        if update_vfn:
-            _, evs['vfn_ev0'], evs['vfn_ev1'] = self._ae.update(ro, **kwargs)
-
-        # Learn residue for dynamics.
-        if update_dyn and self._cvtype == 'traj':
-            obs_curr = np.concatenate([r.obs[:-1] for r in ro])
-            obs_next = np.concatenate([r.obs[1:] for r in ro])
-            acs = np.concatenate([r.acs for r in ro])
-            acs = self.preprocess_acs(acs)
-            _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(
-                np.hstack([obs_curr, acs]), obs_next)
-        return evs
-
-    def preprocess_acs(self, acs):
-        # Use the outpus as inputs to dynamics model to ease learning.
-        acs = np.clip(acs, *self._sim._action_clip)
-        # acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
-        return acs
-
-    def predict_vfns(self, obs, dones=None):
-        vs = np.ravel(self._ae.vfn.predict(obs))
-        if dones is not None:
-            vs[dones] = .0
-        return vs
-
-    def approximate_qfns(self, obs, acs):
-        assert len(obs) == len(acs)
-        acs = self.preprocess_acs(acs)
-        next_obs = self._sim._predict(np.hstack([obs, acs]))
-        rws = self._sim._batch_reward(obs, sts=None, acs=acs)
-        next_dones = self._sim._batch_is_done(next_obs)
-        vs = self.predict_vfns(next_obs, next_dones)
-        qs = rws + self._ae.delta * vs
-        return qs
-
-    def grad(self, x):
-        # g without cv, g with cv for the current step, g with cv for the future steps
-        gwocv, decur, defut = .0, .0, .0
-        # Go through rollout one by one.
-        for i, rollout in enumerate(self._ro):
-            # Gradient without CV: gwocv.
-            gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T, mixing of G_t
-            qmc = gamma_decay * self._qmc[i]  # element-wise
-            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, qmc)
-            gwocv += nqmc
-            # Difference estimators: decur and defut.
-            if self._cvtype == 'nocv':
-                pass
-            elif self._cvtype == 'state':
-                decur += self._policy.logp_grad(rollout.obs_short, rollout.acs,
-                                                gamma_decay * self._vhat[i])
-            elif self._cvtype == 'traj':
                 nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs,
-                                               gamma_decay * self._trajcv_stats.qhat[i])
-                gamma_decay_for_e = np.repeat(gamma_decay, self._n_ac_samples, axis=0)  # I T
-                qhatit = gamma_decay_for_e * self._trajcv_stats.qhatit[i]  # element-wise
-                enqhat = self._policy.logp_grad(self._trajcv_stats.oit[i],
-                                                self._trajcv_stats.ait[i],
-                                                qhatit)
+                                               gamma_decay * qhat)
+                gamma_decay_for_e = np.repeat(gamma_decay, self._n_ac_samples)  # I T
+                qhatit = gamma_decay_for_e * (q-v)  # element-wise
+                enqhat = self._policy.logp_grad(o, a, qhatit)
                 enqhat /= self._n_ac_samples
                 decur += nqhat - enqhat
                 cv_decay = (self._ae.delta * self._cv_decay) ** np.arange(len(rollout))  # T
@@ -428,7 +402,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 #           0.0
                 cv_decay = np.triu(la.circulant(cv_decay).T, k=1)  # T x T
                 decay = cv_decay * gamma_decay[:, None]  # broadcasting
-                diff = self._trajcv_stats.qhat[i] - self._trajcv_stats.eqhat[i]
+                diff = qhat - eqhat
                 diff = np.ravel(np.matmul(decay, diff[:, None]))
                 defut += self._policy.logp_grad(rollout.obs_short, rollout.acs, diff)
 

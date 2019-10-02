@@ -55,7 +55,7 @@ class PolicyGradientWithTrajCV(Algorithm):
             for _ in range(self._n_pretrain_itrs):
                 ros, _ = gen_ro(self.agent('behavior'))
                 ro = self.merge(ros)
-                self.oracle.update(ro, self.policy)
+                self.oracle.update_vfn_dyn_if_needed(ro)
                 self.policy.update(xs=ro['obs_short'])
 
     def update(self, ros, agents):
@@ -63,11 +63,14 @@ class PolicyGradientWithTrajCV(Algorithm):
         ro = self.merge(ros)
 
         with timed('Update oracle'):
-            evs = self.oracle.update(ro, self.policy)
+            self.oracle.update(ro, self.policy)
 
         with timed('Compute policy gradient'):
             grads = self.oracle.grad(self.policy.variable)
             g = grads['g']
+            
+        with timed('Update vfn and dyn if needed'):
+            evs = self.oracle.update_vfn_dyn_if_needed(ro)
 
         with timed('Policy update'):
             if isinstance(self.learner, ol.FisherOnlineOptimizer):
