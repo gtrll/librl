@@ -4,10 +4,10 @@
 from scripts import ranges as R
 
 range_common = [
-    [['seed'], [x * 100 for x in range(1)]],
+    [['seed'], [x for x in range(8)]],
     [['experimenter', 'rollout_kwargs', 'min_n_samples'], [2000]],
-    [['mdp', 'n_processes'], [2]],
-    [['algorithm', 'n_pretrain_itrs'], [1]],
+    [['mdp', 'n_processes'], [1]],
+    [['algorithm', 'n_pretrain_itrs'], [3]],
 ]
 
 range_nocv = [

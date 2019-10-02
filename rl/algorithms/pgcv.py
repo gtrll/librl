@@ -3,6 +3,7 @@
 
 import functools
 import numpy as np
+import psutil
 from rl.algorithms.algorithm import Algorithm, PolicyAgent
 from rl.algorithms.utils import get_learner
 from rl.adv_estimators.advantage_estimator import ValueBasedAE
@@ -96,6 +97,7 @@ class PolicyGradientWithTrajCV(Algorithm):
             logz.log_tabular('{}_norm'.format(name), np.linalg.norm(grad))
         for name, ev in evs.items():
             logz.log_tabular(name, ev)
+        logz.log_tabular('memory_mb', psutil.Process().memory_info().rss / 1024.0 / 1024.0)
         self._itr += 1
 
     @staticmethod

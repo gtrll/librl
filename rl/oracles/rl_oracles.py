@@ -349,18 +349,20 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
 
     def grad(self, x):
         # Note that x is not used. _policy is set during update().
-        # g WithOut cv, Difference Estimators for the CURrent step and for the FUTure steps
+        # g WithOut cv, Difference Estimators for the CURrent step and for the FUTure steps:
         gwocv, decur, defut = .0, .0, .0
         # Go through rollout one by one.
         for rollout in self._ro:
             # Gradient without CV: gwocv.
-            # Count for the last rw, which is default vfn.
-            decay = self._ae.delta ** np.arange(len(rollout))
-            decay = np.triu(la.circulant(decay).T, k=0)
-            # Q function from MC samples, neglect the last rw, which is the default v
-            # (should be zero).
-            qmc = np.ravel(np.matmul(decay, rollout.rws[:-1, None]))  # T
-            gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T, mixing of G_t
+            delta_decay = self._ae.delta ** np.arange(len(rollout))
+            delta_decay = np.triu(la.circulant(delta_decay).T, k=0)
+            # Q function from MC samples.
+            # Ignore the last item in rws, which is default vfn,
+            # so that its len is the same as rollout.
+            qmc = np.ravel(np.matmul(delta_decay, rollout.rws[:-1, None]))  # T
+            # Neglect the last rw, which is the default v, 
+            # Mixing of G_t, gamma is the discount in problem definition.
+            gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T
             qmc = gamma_decay * qmc  # element-wise
             nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, qmc)
             gwocv += nqmc
@@ -375,36 +377,39 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 # CV for step t.
                 qhat = self.approximate_qfns(rollout.obs_short, rollout.acs)  # T
                 # The same randomness for all the steps to reduce variance.
-                r = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x da
-                r = np.tile(r, [len(rollout), 1])  # I T x da
-                o = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x do -> I T x do
-                a = self._policy.derandomize(o, r)  # I T x da
-                q = self.approximate_qfns(o, a)  # I T
-                # To reduce the variance of enqhat.
-                v = self.predict_vfns(rollout.obs_short)
-                v = np.repeat(v, self._n_ac_samples)  # I T
-                eqhat = np.reshape(q, [len(rollout), self._n_ac_samples])  # T x I
-                eqhat = np.mean(eqhat, axis=1)  # T, take average
-                nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs,
-                                               gamma_decay * qhat)
+                # I: number of ac samples, rit: ac randomness in I T size.
+                rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x da
+                rit = np.tile(rit, [len(rollout), 1])  # I T x da
+                oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x do -> I T x do
+                ait = self._policy.derandomize(oit, rit)  # I T x da
+                qhatit = self.approximate_qfns(oit, ait)  # I T
+                vhatit = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
+                vhatit = np.repeat(vhatit, self._n_ac_samples)  # I T
                 gamma_decay_for_e = np.repeat(gamma_decay, self._n_ac_samples)  # I T
-                qhatit = gamma_decay_for_e * (q-v)  # element-wise
-                enqhat = self._policy.logp_grad(o, a, qhatit)
+                advhatit = qhatit - vhatit
+                # Compute gamma^t E_A [ N_t (Qhat_t - Qhat_t)], for each t
+                # Approximate of E_A [N Qhat]
+                enqhat = self._policy.logp_grad(oit, ait, gamma_decay_for_e*advhatit)
                 enqhat /= self._n_ac_samples
+                nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay*qhat)
                 decur += nqhat - enqhat
-                cv_decay = (self._ae.delta * self._cv_decay) ** np.arange(len(rollout))  # T
-                if self._n_cv_steps is not None:
-                    cv_decay[min(self._n_cv_steps, len(rollout))] = .0
-                # WITHOUT the diagonal terms!!!!
-                # Something like
+                # Compute gamma^t E_A [(delta*cv_decay)^{k-t} Qhat_k], for each k, for each t
+                eqhat = np.reshape(qhatit, [len(rollout), self._n_ac_samples])  # T x I
+                eqhat = np.mean(eqhat, axis=1)  # T, take average
+                # decaytt with zero diagonal terms. with shape T x T. each row is for t.
+                # Something like:
                 # 0.0  0.9  0.81
                 #      0.0  0.9
                 #           0.0
-                cv_decay = np.triu(la.circulant(cv_decay).T, k=1)  # T x T
-                decay = cv_decay * gamma_decay[:, None]  # broadcasting
-                diff = qhat - eqhat
-                diff = np.ravel(np.matmul(decay, diff[:, None]))
-                defut += self._policy.logp_grad(rollout.obs_short, rollout.acs, diff)
+                decaytt = (self._ae.delta * self._cv_decay) ** np.arange(len(rollout))  # T
+                if self._n_cv_steps is not None:
+                    decaytt[min(self._n_cv_steps, len(rollout)):] = .0
+                decaytt = np.triu(la.circulant(decaytt).T, k=1)  # T x T
+                # Broadcasting gamma_decay to each row (t).
+                decaytt = decaytt * gamma_decay[:, None]
+                advhat = qhat - eqhat
+                advhat = np.ravel(np.matmul(decaytt, advhat[:, None]))
+                defut += self._policy.logp_grad(rollout.obs_short, rollout.acs, advhat)
 
         if self._avgtype == 'avg':
             scale = 1.0 / np.prod([len(rollout) for rollout in self._ro])
