@@ -438,7 +438,10 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             scale = 1.0 / len(self._ro)
         else:
             raise ValueError
-        g = -(gwocv - decur - defut) * scale
+        gwocv *= scale
+        decur *= scale
+        defut *= scale
+        g = -(gwocv - decur - defut)
         return {'g': g, 'gwocv': gwocv, 'decur': decur, 'defut': defut}
 
     @property
