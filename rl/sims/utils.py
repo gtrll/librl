@@ -3,7 +3,6 @@
 
 import pdb
 from rl import sims
-from rl.core.function_approximators.supervised_learners import SuperRobustKerasMLP
 
 # Env.
 ENVID2MODELENV = {
@@ -17,10 +16,10 @@ ENVID2MODELENV = {
 }
 
 
-def create_sim_env(env, seed, dyn_units):
-    ob_dim = len(env.reset()) + 1  # consider time info
-    ac_dim = env.action_space.shape[0]
-    dyn = SuperRobustKerasMLP((ob_dim + ac_dim,), (ob_dim,), name='dynamics', units=dyn_units)
+def create_sim_env(env, seed, dyn_units, predict_residue):
+    ob_shape = (len(env.reset()) + 1, )  # consider time info
+    ac_shape = env.action_space.shape
+    dyn = sims.Dynamics(ob_shape, ac_shape, units=dyn_units, predict_residue=predict_residue)
     envid = env.env.spec.id
     sim = ENVID2MODELENV[envid](env, predict=dyn.predict, seed=seed)
     return sim

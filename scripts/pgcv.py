@@ -30,7 +30,7 @@ def main(c):
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function',
                               units=c['value_units'])
     sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
-                         dyn_units=c['dyn_units'])
+                         dyn_units=c['dyn_units'], predict_residue=c['predict_residue'])
 
     # Create algorithm
     alg = PolicyGradientWithTrajCV(policy, vfn,
@@ -58,33 +58,35 @@ CONFIG = {
             'n_itrs': 100,
             'pretrain': True,
             'final_eval': False,
-            'save_freq': 5,
+            'save_freq': None,
         },
         'rollout_kwargs': {
-            'min_n_samples': 2000,
+            'min_n_samples': 100,
             'max_n_rollouts': None,
         },
     },
     'algorithm': {
         'optimizer': 'adam',
         'lr': 0.001,
+        'c': 0.01,
         'max_kl': 0.1,
-        'delta': None,
-        'lambd': 0.99,
+        'delta': 0.99,
+        'lambd': 0.0,
         'max_n_batches': 2,  # for ae
         'n_warm_up_itrs': None,  # policy nor update
-        'n_pretrain_itrs': 5,
+        'n_pretrain_itrs': 3,
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 200,
+            'n_ac_samples': 500,
             'switch_from_cvtype_state_at_itr': None,
         },
     },
     'policy_units': (64,),
     'value_units': (128, 128),
     'dyn_units': (128, 128),
+    'predict_residue': True,
     'init_lstd': -1.0,
 }
 

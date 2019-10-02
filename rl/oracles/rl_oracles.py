@@ -366,15 +366,14 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             obs_next = np.concatenate([r.obs[1:] for r in ro])
             acs = np.concatenate([r.acs for r in ro])
             acs = self.preprocess_acs(acs)
-            inputs = np.hstack([obs_curr, acs])
-            targets = obs_next - obs_curr
-            _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(inputs, targets)
+            _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(
+                np.hstack([obs_curr, acs]), obs_next)
         return evs
 
     def preprocess_acs(self, acs):
         # Use the outpus as inputs to dynamics model to ease learning.
         acs = np.clip(acs, *self._sim._action_clip)
-        acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
+        # acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
         return acs
 
     def predict_vfns(self, obs, dones=None):
@@ -386,7 +385,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def approximate_qfns(self, obs, acs):
         assert len(obs) == len(acs)
         acs = self.preprocess_acs(acs)
-        next_obs = self._sim._predict(np.hstack([obs, acs])) + obs  # dyn predicts residue
+        next_obs = self._sim._predict(np.hstack([obs, acs]))
         rws = self._sim._batch_reward(obs, sts=None, acs=acs)
         next_dones = self._sim._batch_is_done(next_obs)
         vs = self.predict_vfns(next_obs, next_dones)
@@ -419,7 +418,6 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                                                 qhatit)
                 enqhat /= self._n_ac_samples
                 decur += nqhat - enqhat
-                # CV for step t onward.
                 cv_decay = (self._ae.delta * self._cv_decay) ** np.arange(len(rollout))  # T
                 if self._n_cv_steps is not None:
                     cv_decay[min(self._n_cv_steps, len(rollout))] = .0
