@@ -70,8 +70,8 @@ CONFIG = {
         'lr': 0.001,
         'c': 0.01,
         'max_kl': 0.1,
-        'delta': 0.99,
-        'lambd': 0.0,
+        'delta': 0.999,
+        'lambd': 1.0,
         'max_n_batches': 2,  # for ae
         'n_warm_up_itrs': None,  # policy nor update
         'n_pretrain_itrs': 1,

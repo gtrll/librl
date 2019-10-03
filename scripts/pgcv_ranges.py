@@ -4,10 +4,12 @@
 from scripts import ranges as R
 
 range_common = [
-    [['seed'], [x for x in range(8)]],
+    [['seed'], [x for x in range(4)]],
     [['experimenter', 'rollout_kwargs', 'min_n_samples'], [2000]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [4]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
     [['mdp', 'n_processes'], [1]],
-    [['algorithm', 'n_pretrain_itrs'], [3]],
+    [['algorithm', 'n_pretrain_itrs'], [30]],
 ]
 
 range_nocv = [
@@ -31,4 +33,3 @@ range_traj = [
     [['algorithm', 'or_kwargs', 'n_cv_steps'], [None]],
 ]
 range_traj = R.merge_ranges(range_common, range_traj)
-
