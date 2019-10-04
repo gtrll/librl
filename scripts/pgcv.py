@@ -30,7 +30,8 @@ def main(c):
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function',
                               units=c['value_units'])
     sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
-                         dyn_units=c['dyn_units'], predict_residue=c['predict_residue'])
+                         dyn_units=c['dyn_units'], predict_residue=c['predict_residue'],
+                         use_time_info=mdp.use_time_info)
 
     # Create algorithm
     alg = PolicyGradientWithTrajCV(policy, vfn,
@@ -53,7 +54,7 @@ CONFIG = {
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
         'n_processes': 4,
-        'use_time_info': False,
+        'use_time_info': True,
     },
     'experimenter': {
         'run_kwargs': {

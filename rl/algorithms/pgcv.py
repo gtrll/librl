@@ -83,11 +83,6 @@ class PolicyGradientWithTrajCV(Algorithm):
             grads = self.oracle.grad(self.policy.variable)
             g = grads['g']
 
-        evs = {}
-        with timed('Update vfn and dyn if needed'):
-            _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
-            _, evs['dyn_ev0'], evs['dyn_ev1'] = self.oracle.update_dyn(ro)
-
         with timed('Policy update'):
             if isinstance(self.learner, ol.FisherOnlineOptimizer):
                 if self._optimizer == 'trpo_wl':  # use also the loss function
@@ -97,6 +92,11 @@ class PolicyGradientWithTrajCV(Algorithm):
             else:
                 self.learner.update(g)
             self.policy.variable = self.learner.x
+            
+        evs = {}
+        with timed('Update vfn and dyn if needed'):
+            _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
+            _, evs['dyn_ev0'], evs['dyn_ev1'] = self.oracle.update_dyn(ro)
 
         # Update input normalizer for whitening
         # Put it here so that the policy for data collection is the same one with respective to
