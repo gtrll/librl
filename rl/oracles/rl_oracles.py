@@ -293,7 +293,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
         self._ro = None
 
-        self._switched = False
+        self._switched_back = False
         if self._switch_from_cvtype_state_at_itr is not None:
             self._saved_cvtype = self._cvtype
             self._cvtype = 'state'
@@ -303,25 +303,27 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
 
     def update(self, ro, policy, itr=None, **kwargs):
         if (itr is not None and self._switch_from_cvtype_state_at_itr is not None and
-                itr >= self._switch_from_cvtype_state_at_itr and not self._switched):
+                itr >= self._switch_from_cvtype_state_at_itr and not self._switched_back):
             print('Switch to fancy cv: {} from {}'.format(self._saved_cvtype, self._cvtype))
             self._cvtype = self._saved_cvtype
-            self._switched = True
+            self._switched_back = True
         self._policy.assign(policy)  # NOTE sync BOTH variables and parameters
         self._ro = ro
 
-    def update_vfn_dyn_if_needed(self, ro, **kwargs):
-        evs = {'vfn_ev0': .0, 'vfn_ev1': .0, 'dyn_ev0': .0, 'dyn_ev1': .0}
+    def update_vfn(self, ro, **kwargs):
         if self._update_vfn:
-            _, evs['vfn_ev0'], evs['vfn_ev1'] = self._ae.update(ro, **kwargs)
+            return self._ae.update(ro, **kwargs)
+        return .0, .0, .0
+
+    def update_dyn(self, ro, **kwargs):
         if self._update_dyn:
             obs_curr = np.concatenate([r.obs[:-1] for r in ro])
             obs_next = np.concatenate([r.obs[1:] for r in ro])
             acs = np.concatenate([r.acs for r in ro])
             acs = self.preprocess_acs(acs)
-            _, evs['dyn_ev0'], evs['dyn_ev1'] = self._sim._predict.__self__.update(
-                np.hstack([obs_curr, acs]), obs_next, **kwargs)
-        return evs
+            return self._sim._predict.__self__.update(np.hstack([obs_curr, acs]),
+                                                      obs_next, **kwargs)
+        return .0, .0, .0
 
     def preprocess_acs(self, acs):
         # Use the outpus as inputs to dynamics model to ease learning.
@@ -348,7 +350,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         return qs
 
     def grad(self, x):
-        # Note that x is not used. _policy is set during update().
+        # Note that x is not used. _policy is set in update().
         # g WithOut cv, Difference Estimators for the CURrent step and for the FUTure steps:
         gwocv, decur, defut = .0, .0, .0
         # Go through rollout one by one.
@@ -360,11 +362,10 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             # Ignore the last item in rws, which is default vfn,
             # so that its len is the same as rollout.
             qmc = np.ravel(np.matmul(delta_decay, rollout.rws[:-1, None]))  # T
-            # Neglect the last rw, which is the default v, 
+            # Neglect the last rw, which is the default v,
             # Mixing of G_t, gamma is the discount in problem definition.
             gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T
-            qmc = gamma_decay * qmc  # element-wise
-            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, qmc)
+            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * qmc)
             gwocv += nqmc
             # Difference estimators: decur and defut.
             if self._cvtype == 'nocv':

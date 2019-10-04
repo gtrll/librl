@@ -17,7 +17,7 @@ ENVID2MODELENV = {
 
 
 def create_sim_env(env, seed, dyn_units, predict_residue):
-    ob_shape = (len(env.reset()) + 1, )  # consider time info
+    ob_shape = (len(env.reset()), )  # assume no time info
     ac_shape = env.action_space.shape
     dyn = sims.Dynamics(ob_shape, ac_shape, units=dyn_units, predict_residue=predict_residue)
     envid = env.env.spec.id

@@ -40,6 +40,7 @@ def main(c):
 
     # Let's do some experiments!
     exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'])
+    alg._experimenter = exp  # XXX HACK
     exp.run(**c['experimenter']['run_kwargs'])
 
 
@@ -52,6 +53,7 @@ CONFIG = {
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
         'n_processes': 4,
+        'use_time_info': False,
     },
     'experimenter': {
         'run_kwargs': {
@@ -82,6 +84,11 @@ CONFIG = {
             'n_ac_samples': 500,
             'switch_from_cvtype_state_at_itr': None,
         },
+        'vfn_ro_kwargs': {
+            'min_n_samples': 100,
+            'max_n_rollouts': None,
+        },
+        'extra_vfn_training': False,
     },
     'policy_units': (64,),
     'value_units': (128, 128),

@@ -5,31 +5,39 @@ from scripts import ranges as R
 
 range_common = [
     [['seed'], [x for x in range(4)]],
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [2000]],
-    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [4]],
-    [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
     [['mdp', 'n_processes'], [1]],
-    [['algorithm', 'n_pretrain_itrs'], [30]],
+    [['algorithm', 'n_pretrain_itrs'], [20]],
 ]
 
-range_nocv = [
+range_upper_bound = range_common + [
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [10000]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
+]
+
+range_extra = [
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [1000]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
+]
+
+range_nocv = range_common + range_extra + [
     [['algorithm', 'or_kwargs', 'cvtype'], ['nocv']],
 ]
-range_nocv = R.merge_ranges(range_common, range_nocv)
 
-range_state = [
+range_state = range_common + range_extra + [
     [['algorithm', 'or_kwargs', 'cvtype'], ['state']],
 ]
-range_state = R.merge_ranges(range_common, range_state)
 
-range_state_action = [
+range_state_action = range_common + range_extra + [
     [['algorithm', 'or_kwargs', 'cvtype'], ['traj']],
     [['algorithm', 'or_kwargs', 'n_cv_steps'], [1]],
+    [['algorithm', 'extra_vfn_training'], [True]],
+    [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [10000]],
 ]
-range_state_action = R.merge_ranges(range_common, range_state_action)
 
-range_traj = [
+range_traj = range_common + range_extra + [
     [['algorithm', 'or_kwargs', 'cvtype'], ['traj']],
     [['algorithm', 'or_kwargs', 'n_cv_steps'], [None]],
+    [['algorithm', 'extra_vfn_training'], [True]],
+    [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [10000]],
 ]
-range_traj = R.merge_ranges(range_common, range_traj)
