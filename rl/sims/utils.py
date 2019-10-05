@@ -18,7 +18,7 @@ ENVID2MODELENV = {
 
 def create_sim_env(env, seed, dyn_units, predict_residue, use_time_info):
     if use_time_info:
-        ob_shape = (len(env.reset()+1), )  # assume no time info
+        ob_shape = (len(env.reset()) + 1, )  # assume no time info
     else:
         ob_shape = (len(env.reset()), )  # assume no time info
     ac_shape = env.action_space.shape

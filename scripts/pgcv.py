@@ -69,8 +69,9 @@ CONFIG = {
         },
     },
     'algorithm': {
-        'optimizer': 'adam',
-        'lr': 0.001,
+        'optimizer': 'natgrad',
+        # 'damping': 0.1,
+        'lr': 0.05,
         'c': 0.01,
         'max_kl': 0.1,
         'delta': 0.999,
