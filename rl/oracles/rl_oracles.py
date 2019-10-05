@@ -361,7 +361,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         gwocv, decur, defut = .0, .0, .0
         # Go through rollout one by one.
         if self._cv_onestep_weighting:
-            cv_onestep_ws = self._ae.weights(self._ro, policy=self.policy)
+            cv_onestep_ws = self._ae.weights(self._ro, policy=self._policy)
         else:
             cv_onestep_ws = [np.ones(len(r)) for r in self._ro]
         for i, rollout in enumerate(self._ro):

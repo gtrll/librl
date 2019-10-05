@@ -95,7 +95,7 @@ CONFIG = {
             'n_cv_steps': None,
             'cv_decay': 1.0,
             'n_ac_samples': 500,
-            'cv_onestep_weighting': False, # to reduce bias
+            'cv_onestep_weighting': True, # to reduce bias
             'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_ro_kwargs': {
