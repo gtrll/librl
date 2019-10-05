@@ -6,7 +6,8 @@ from scripts import ranges as R
 range_common = [
     [['seed'], [x for x in range(4)]],
     [['mdp', 'n_processes'], [1]],
-    [['algorithm', 'n_pretrain_itrs'], [3]],
+    [['algorithm', 'n_pretrain_itrs'], [1]],
+    [['algorithm', 'n_warm_up_itrs'], [0]],    
 ]
 
 range_comparison = [
@@ -17,7 +18,7 @@ range_comparison = [
 range_cv = [
     [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
     [['algorithm', 'extra_vfn_training'], [True]],
-    [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [10000]],
+    [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [50000]],
 ]
 
 range_upper_bound = range_common + [

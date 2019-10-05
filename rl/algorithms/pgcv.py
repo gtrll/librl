@@ -22,7 +22,8 @@ class PolicyGradientWithTrajCV(Algorithm):
                  horizon=None, gamma=1.0, delta=None, lambd=0.99,
                  max_n_batches=2, n_warm_up_itrs=None, n_pretrain_itrs=1,
                  sim=None, or_kwargs=None,
-                 extra_vfn_training=False, vfn_ro_kwargs=None):
+                 extra_vfn_training=False, vfn_ro_kwargs=None
+                 ):
 
         assert isinstance(policy, Policy)
         self.vfn = vfn
@@ -68,6 +69,7 @@ class PolicyGradientWithTrajCV(Algorithm):
     def update(self, ros, agents):
         # Aggregate data
         ro = self.merge(ros)
+        evs = {}
 
         with timed('Update oracle'):
             self.oracle.update(ro, self.policy)
@@ -77,7 +79,7 @@ class PolicyGradientWithTrajCV(Algorithm):
                 vfn_ros, _ = self._experimenter.gen_ro(self.agent('behavior'), to_log=False,
                                                        ro_kwargs=self._vfn_ro_kwargs)
                 vfn_ro = self.merge(vfn_ros)
-                self.oracle.update_vfn(vfn_ro)
+                _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(vfn_ro)
 
         with timed('Compute policy gradient'):
             grads = self.oracle.grad(self.policy.variable)
@@ -93,9 +95,9 @@ class PolicyGradientWithTrajCV(Algorithm):
                 self.learner.update(g)
             self.policy.variable = self.learner.x
             
-        evs = {}
         with timed('Update vfn and dyn if needed'):
-            _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
+            if not self._extra_vfn_training:
+                _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
             _, evs['dyn_ev0'], evs['dyn_ev1'] = self.oracle.update_dyn(ro)
 
         # Update input normalizer for whitening
