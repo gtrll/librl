@@ -392,6 +392,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 # The same randomness for all the steps to reduce variance.
                 # I: number of ac samples, rit: ac randomness in I T size.
                 rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
+                rit = np.exp(self._policy.lstd) * rit # NOTE need to scale
                 rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
                 oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
                 ait = self._policy.derandomize(oit, rit)  # I T x d_a
