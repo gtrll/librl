@@ -11,8 +11,8 @@ range_common = [
 ]
 
 range_comparison = [
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [1000]],
-    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [None]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [5]],
 ]
 
 range_cv = [

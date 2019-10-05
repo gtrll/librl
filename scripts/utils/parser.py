@@ -35,8 +35,9 @@ def configure_log(config, unique_log_dir=False):
     logz.configure_output_dir(log_dir)
     logz.save_params(config)
 
-def create_env(envid, seed):
-    env = gym.make(envid)
+def create_env(envid, seed, **kwargs):
+    # kwargs: additional flags for creating the gym env.
+    env = gym.make(envid, **kwargs)
     env.seed(seed)
     return env
 

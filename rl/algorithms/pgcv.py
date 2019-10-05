@@ -22,7 +22,7 @@ class PolicyGradientWithTrajCV(Algorithm):
                  horizon=None, gamma=1.0, delta=None, lambd=0.99,
                  max_n_batches=2, n_warm_up_itrs=None, n_pretrain_itrs=1,
                  sim=None, or_kwargs=None,
-                 extra_vfn_training=False, vfn_ro_kwargs=None
+                 extra_vfn_training=False, vfn_ro_kwargs=None, vfn_mdp=None,
                  ):
 
         assert isinstance(policy, Policy)
@@ -44,8 +44,8 @@ class PolicyGradientWithTrajCV(Algorithm):
         # Misc.
         self._extra_vfn_training = extra_vfn_training
         self._vfn_ro_kwargs = cp.deepcopy(vfn_ro_kwargs)
+        self._vfn_mdp = vfn_mdp
         self._n_pretrain_itrs = n_pretrain_itrs
-        self._experimenter = None
         if n_warm_up_itrs is None:
             n_warm_up_itrs = float('Inf')
         self._n_warm_up_itrs = n_warm_up_itrs
@@ -71,13 +71,16 @@ class PolicyGradientWithTrajCV(Algorithm):
         ro = self.merge(ros)
         evs = {}
 
+        # Update input normalizer for whitening
+        if self._itr < self._n_warm_up_itrs:
+            self.policy.update(xs=ro['obs_short'])
+
         with timed('Update oracle'):
             self.oracle.update(ro, self.policy)
 
         if self._extra_vfn_training:
             with timed('Update vfn (Extra)'):
-                vfn_ros, _ = self._experimenter.gen_ro(self.agent('behavior'), to_log=False,
-                                                       ro_kwargs=self._vfn_ro_kwargs)
+                vfn_ros, _ = self._vfn_mdp.run(self.agent('behavior'),  **self._vfn_ro_kwargs)
                 vfn_ro = self.merge(vfn_ros)
                 _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(vfn_ro)
 
@@ -99,12 +102,6 @@ class PolicyGradientWithTrajCV(Algorithm):
             if not self._extra_vfn_training:
                 _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
             _, evs['dyn_ev0'], evs['dyn_ev1'] = self.oracle.update_dyn(ro)
-
-        # Update input normalizer for whitening
-        # Put it here so that the policy for data collection is the same one with respective to
-        # which policy gradient is computed.
-        if self._itr < self._n_warm_up_itrs:
-            self.policy.update(xs=ro['obs_short'])
 
         # log
         logz.log_tabular('stepsize', self.learner.stepsize)

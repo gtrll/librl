@@ -141,7 +141,7 @@ class DartEnvWithModel(EnvWithModel):
 
         self._max_episode_steps = env._max_episode_steps
         env = env.env  # env is TimeLimit object..
-        action_clip = [env.action_space.low[0], env.action_space.high[0]]  # the same for all dims
+        action_clip = [env.action_space.low, env.action_space.high]
         state_clip = None  # XX no state clip!
         self._ob_sp = env.observation_space
         self._ac_sp = env.action_space
@@ -793,6 +793,7 @@ class Reacher(DartEnvWithModel):
 
     @DartEnvWithModel._require_robot_x_update_to_date()
     def _default_reward(self, prev_state, a):
+        a = np.clip(a, *self._action_clip)  # clip first
         robot_x = self._robot.x
         self._robot.x = prev_state
         vec = self._robot.bodynodes[2].to_world(self.fingertip) - self.target
@@ -806,7 +807,6 @@ class Reacher(DartEnvWithModel):
     def _batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
-
         if omit_c and acs is None:
             rew = np.zeros(n)
         else:
@@ -815,6 +815,7 @@ class Reacher(DartEnvWithModel):
         if acs is None:
             return -np.ones((n, ac_dim))*0.2, np.zeros((n, ac_dim)), rew
         else:
+            acs = np.clip(acs, *self._action_clip)
             ac_pen = 0.1 * np.square(acs).sum(axis=1)
             rew -= ac_pen
             return rew

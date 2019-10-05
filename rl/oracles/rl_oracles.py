@@ -270,6 +270,7 @@ class ValueBasedExpertGradientByRandomTimeSampling(rlOracle):
 class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def __init__(self, policy, ae, avgtype='sum',
                  cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None,
+                 cv_onestep_weighting=False,
                  switch_from_cvtype_state_at_itr=None):
         # Consider delta and gamma, but no importance sampling capability yet.
         assert cvtype in ['nocv', 'state', 'traj']
@@ -283,6 +284,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._n_cv_steps = n_cv_steps  # number of difference estimators to use, starting from t
         self._cv_decay = cv_decay  # additional decay for difference estimators for future steps
         self._n_ac_samples = n_ac_samples  # number of MC samples for E_A
+        self._cv_onestep_weighting = cv_onestep_weighting
         self._sim = sim
         # Warm up for 'traj' cvtype, first do 'state' for some iterations.
         if cvtype == 'traj' and switch_from_cvtype_state_at_itr is not None:
@@ -326,6 +328,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         return .0, .0, .0
 
     def preprocess_acs(self, acs):
+        # XXX only suit for DartEnv.
         # Use the outpus as inputs to dynamics model to ease learning.
         acs = np.clip(acs, *self._sim._action_clip)
         # acs = acs * self._sim._action_scale[:, None]  # broadcasting to rows
@@ -341,27 +344,36 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def approximate_qfns(self, obs, acs):
         # Return a flat np array.
         assert len(obs) == len(acs)
-        acs = self.preprocess_acs(acs)
-        next_obs = self._sim._predict(np.hstack([obs, acs]))
+        # rws should be based on acs without processing.
         rws = self._sim._batch_reward(obs, sts=None, acs=acs)
+        acs1 = self.preprocess_acs(acs)
+        next_obs = self._sim._predict(np.hstack([obs, acs1]))
         next_dones = self._sim._batch_is_done(next_obs)
         vs = self.predict_vfns(next_obs, next_dones)
         qs = rws + self._ae.delta * vs
         return qs
 
     def grad(self, x):
+        # Assign policy variables.
+        self._policy.variable = x
         # Note that x is not used. _policy is set in update().
         # g WithOut cv, Difference Estimators for the CURrent step and for the FUTure steps:
         gwocv, decur, defut = .0, .0, .0
         # Go through rollout one by one.
-        for rollout in self._ro:
+        if self._cv_onestep_weighting:
+            cv_onestep_ws = self._ae.weights(self._ro, policy=self.policy)
+        else:
+            cv_onestep_ws = [np.ones(len(r)) for r in self._ro]
+        for i, rollout in enumerate(self._ro):
             # Gradient without CV: gwocv.
-            delta_decay = self._ae.delta ** np.arange(len(rollout))
+            # +1 to consider the appending default vf.
+            delta_decay = self._ae.delta ** np.arange(len(rollout)+1)
             delta_decay = np.triu(la.circulant(delta_decay).T, k=0)
             # Q function from MC samples.
             # Ignore the last item in rws, which is default vfn,
             # so that its len is the same as rollout.
-            qmc = np.ravel(np.matmul(delta_decay, rollout.rws[:-1, None]))  # T
+            qmc = np.ravel(np.matmul(delta_decay, rollout.rws[:, None]))  # T
+            qmc = qmc[:-1]
             # Neglect the last rw, which is the default v,
             # Mixing of G_t, gamma is the discount in problem definition.
             gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T
@@ -379,20 +391,21 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 qhat = self.approximate_qfns(rollout.obs_short, rollout.acs)  # T
                 # The same randomness for all the steps to reduce variance.
                 # I: number of ac samples, rit: ac randomness in I T size.
-                rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x da
-                rit = np.tile(rit, [len(rollout), 1])  # I T x da
-                oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x do -> I T x do
-                ait = self._policy.derandomize(oit, rit)  # I T x da
+                rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
+                rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
+                oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
+                ait = self._policy.derandomize(oit, rit)  # I T x d_a
                 qhatit = self.approximate_qfns(oit, ait)  # I T
                 vhatit = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
                 vhatit = np.repeat(vhatit, self._n_ac_samples)  # I T
-                gamma_decay_for_e = np.repeat(gamma_decay, self._n_ac_samples)  # I T
+                gamma_decay_it = np.repeat(gamma_decay, self._n_ac_samples)  # I T
                 advhatit = qhatit - vhatit
-                # Compute gamma^t E_A [ N_t (Qhat_t - Qhat_t)], for each t
+                # Compute gamma^t E_A [ N_t (Qhat_t - Vhat_t)], for each t
                 # Approximate of E_A [N Qhat]
-                enqhat = self._policy.logp_grad(oit, ait, gamma_decay_for_e*advhatit)
+                enqhat = self._policy.logp_grad(oit, ait, gamma_decay_it*advhatit)
                 enqhat /= self._n_ac_samples
-                nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay*qhat)
+                nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs,
+                                               cv_onestep_ws[i]*gamma_decay*qhat)  # weighting
                 decur += nqhat - enqhat
                 # Compute gamma^t E_A [(delta*cv_decay)^{k-t} Qhat_k], for each k, for each t
                 eqhat = np.reshape(qhatit, [len(rollout), self._n_ac_samples])  # T x I
@@ -408,7 +421,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 decaytt = np.triu(la.circulant(decaytt).T, k=1)  # T x T
                 # Broadcasting gamma_decay to each row (t).
                 decaytt = decaytt * gamma_decay[:, None]
-                advhat = qhat - eqhat
+                advhat = cv_onestep_ws[i] * qhat - eqhat
                 advhat = np.ravel(np.matmul(decaytt, advhat[:, None]))
                 defut += self._policy.logp_grad(rollout.obs_short, rollout.acs, advhat)
 

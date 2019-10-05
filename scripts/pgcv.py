@@ -4,6 +4,7 @@
 import numpy as np
 from scripts.utils import parser as ps
 from rl import experimenter as Exp
+from rl.experimenter import MDP
 from rl.sims import create_sim_env
 from rl.algorithms import PolicyGradientWithTrajCV
 from rl.core.function_approximators.policies.tf2_policies import RobustKerasMLPGassian
@@ -26,22 +27,31 @@ def main(c):
     policy = RobustKerasMLPGassian(ob_shape, ac_shape, name='policy',
                                    init_lstd=c['init_lstd'],
                                    units=c['policy_units'])
-
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function',
                               units=c['value_units'])
+
+    # Simulator for one-step simulation in TrajCV.
     sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
                          dyn_units=c['dyn_units'], predict_residue=c['predict_residue'],
                          use_time_info=mdp.use_time_info)
 
+    # Create mdp for collecting extra samples for training vf.
+    inacc_env = ps.create_env(mdp.env.env.spec.id,
+                              seed=np.random.randint(np.iinfo(np.int32).max),
+                              inacc=c['vfn_mdp_inacc'])
+    c_mdp = dict(c['mdp'])
+    del c_mdp['envid']
+    vfn_mdp = MDP(inacc_env, **c_mdp)
+
     # Create algorithm
     alg = PolicyGradientWithTrajCV(policy, vfn,
                                    gamma=mdp.gamma, horizon=mdp.horizon,
-                                   sim=sim,
+                                   sim=sim, vfn_mdp=vfn_mdp,
                                    **c['algorithm'])
 
     # Let's do some experiments!
+
     exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'])
-    alg._experimenter = exp  # XXX HACK
     exp.run(**c['experimenter']['run_kwargs'])
 
 
@@ -56,6 +66,7 @@ CONFIG = {
         'n_processes': 4,
         'use_time_info': True,
     },
+    'vfn_mdp_inacc': 0.1,  # bias / inaccuracy in the model for training vfn
     'experimenter': {
         'run_kwargs': {
             'n_itrs': 100,
@@ -77,13 +88,14 @@ CONFIG = {
         'delta': 0.999,
         'lambd': 1.0,
         'max_n_batches': 2,  # for ae
-        'n_warm_up_itrs': None,  # policy nor update
+        'n_warm_up_itrs': 0,  # policy nor update
         'n_pretrain_itrs': 1,
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
             'n_ac_samples': 500,
+            'cv_onestep_weighting': False, # to reduce bias
             'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_ro_kwargs': {
