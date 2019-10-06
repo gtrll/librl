@@ -50,8 +50,8 @@ def main(c):
                                    **c['algorithm'])
 
     # Let's do some experiments!
-
-    exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'])
+    exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'],
+                           ro_kwargs_pretrain=c['experimenter']['rollout_kwargs_pretrain'])
     exp.run(**c['experimenter']['run_kwargs'])
 
 
@@ -74,6 +74,10 @@ CONFIG = {
             'final_eval': False,
             'save_freq': None,
         },
+        'rollout_kwargs_pretrain': {
+            'min_n_samples': 20,
+            'max_n_rollouts': None,
+        },
         'rollout_kwargs': {
             'min_n_samples': 20,
             'max_n_rollouts': None,
@@ -81,13 +85,12 @@ CONFIG = {
     },
     'algorithm': {
         'optimizer': 'natgrad',
-        # 'damping': 0.1,
         'lr': 0.05,
         'c': 0.01,
         'max_kl': 0.1,
         'delta': 0.999,
         'lambd': 1.0,
-        'max_n_batches': 2,  # for ae
+        'max_n_batches': 1,  # for ae
         'n_warm_up_itrs': 0,  # policy nor update
         'n_pretrain_itrs': 1,
         'or_kwargs': {

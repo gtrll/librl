@@ -13,7 +13,8 @@ from rl.core.utils import logz
 
 class Experimenter:
 
-    def __init__(self, alg, mdp, ro_kwargs, mdp_test=None, ro_kwargs_test=None):
+    def __init__(self, alg, mdp, ro_kwargs, mdp_test=None,
+                 ro_kwargs_test=None, ro_kwargs_pretrain=None):
         """
             ro_kwargs is a dict with keys, 'min_n_samples', 'max_n_rollouts'
 
@@ -22,6 +23,10 @@ class Experimenter:
         self.alg = safe_assign(alg, Algorithm)
         self.mdp = safe_assign(mdp, MDP)
         self.ro_kwargs = ro_kwargs
+        if ro_kwargs_pretrain is None:
+            self.ro_kwargs_pretrain = ro_kwargs
+        else:
+            self.ro_kwargs_pretrain = ro_kwargs_pretrain
         self.mdp_test = mdp_test
         self.ro_kwargs_test = ro_kwargs_test
         self._n_samples = 0  # number of data points seen
@@ -108,7 +113,8 @@ class Experimenter:
 
         start_time = time.time()
         if pretrain:
-            self.alg.pretrain(functools.partial(self.gen_ro, to_log=False))
+            self.alg.pretrain(functools.partial(self.gen_ro, to_log=False,
+                                                ro_kwargs=self.ro_kwargs_pretrain))
 
         # Main loop
         for itr in range(n_itrs):
