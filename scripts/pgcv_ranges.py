@@ -6,7 +6,7 @@ from scripts import ranges as R
 range_common = [
     [['seed'], [x for x in range(4)]],
     [['init_lstd'], [.0]],
-    [['mdp', 'n_processes'], [12]],
+    [['mdp', 'n_processes'], [4]],
     [['mdp', 'use_time_info'], [False]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [50000]],
     [['experimenter', 'rollout_kwargs_pretrain', 'max_n_rollouts'], [None]],
