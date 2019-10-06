@@ -4,17 +4,19 @@
 from scripts import ranges as R
 
 range_common = [
-    [['seed'], [x for x in range(8)]],
+    [['seed'], [x for x in range(4)]],
+    [['init_lstd'], [.0]],
     [['mdp', 'n_processes'], [12]],
-    [['mdp', 'use_time_info'], [True, False]],
-    [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
+    [['mdp', 'use_time_info'], [False]],
+    [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [50000]],
     [['experimenter', 'rollout_kwargs_pretrain', 'max_n_rollouts'], [None]],
-    [['algorithm', 'lr'], [0.02]],
+    [['algorithm', 'delta'], [0.99]],
+    [['algorithm', 'lr'], [0.1]],
 ]
 
 range_comparison = [
     [['experimenter', 'rollout_kwargs', 'min_n_samples'], [None]],
-    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [5]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [10]],
 ]
 
 range_cv = [
@@ -25,7 +27,7 @@ range_cv = [
 ]
 
 range_upper_bound = range_common + [
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [100000]],
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [50000]],
     [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
     [['algorithm', 'or_kwargs', 'cvtype'], ['state']],
 ]
