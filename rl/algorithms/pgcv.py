@@ -80,9 +80,11 @@ class PolicyGradientWithTrajCV(Algorithm):
 
         if self._extra_vfn_training:
             with timed('Update vfn (Extra)'):
-                vfn_ros, _ = self._vfn_mdp.run(self.agent('behavior'),  **self._vfn_ro_kwargs)
-                vfn_ro = self.merge(vfn_ros)
-                _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(vfn_ro)
+                with timed('Collect samples'):
+                    vfn_ros, _ = self._vfn_mdp.run(self.agent('behavior'), **self._vfn_ro_kwargs)
+                    vfn_ro = self.merge(vfn_ros)
+                with timed('Update vfn'):
+                    _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(vfn_ro)
 
         with timed('Compute policy gradient'):
             grads = self.oracle.grad(self.policy.variable)
@@ -97,7 +99,7 @@ class PolicyGradientWithTrajCV(Algorithm):
             else:
                 self.learner.update(g)
             self.policy.variable = self.learner.x
-            
+
         with timed('Update vfn and dyn if needed'):
             if not self._extra_vfn_training:
                 _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)

@@ -32,8 +32,8 @@ def main(c):
 
     # Simulator for one-step simulation in TrajCV.
     sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
-                         dyn_units=c['dyn_units'], predict_residue=c['predict_residue'],
-                         use_time_info=mdp.use_time_info)
+                         use_time_info=mdp.use_time_info,
+                         **c['vfn_dyn_kwargs'])
 
     # Create mdp for collecting extra samples for training vf.
     inacc_env = ps.create_env(mdp.env.env.spec.id,
@@ -98,7 +98,7 @@ CONFIG = {
             'n_cv_steps': None,
             'cv_decay': 1.0,
             'n_ac_samples': 500,
-            'cv_onestep_weighting': True, # to reduce bias
+            'cv_onestep_weighting': True,  # to reduce bias
             'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_ro_kwargs': {
@@ -109,8 +109,12 @@ CONFIG = {
     },
     'policy_units': (64,),
     'value_units': (128, 128),
-    'dyn_units': (128, 128),
-    'predict_residue': True,
+    'vfn_dyn_kwargs': {
+        'units': (128, 128),
+        'predict_residue': True,
+        'max_n_samples': 200000,
+        'max_n_batches': None,
+    },
     'init_lstd': -1.0,
 }
 
