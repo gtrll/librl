@@ -4,8 +4,8 @@
 from scripts import ranges as R
 
 range_common = [
-    [['seed'], [x for x in range(1)]],
-    [['mdp', 'n_processes'], [8]],
+    [['seed'], [x for x in range(4)]],
+    [['mdp', 'n_processes'], [12]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
     [['experimenter', 'rollout_kwargs_pretrain', 'max_n_rollouts'], [None]],
     [['algorithm', 'lr'], [0.05]],        
@@ -24,7 +24,7 @@ range_cv = [
 ]
 
 range_upper_bound = range_common + [
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [10000]],
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [100000]],
     [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
     [['algorithm', 'or_kwargs', 'cvtype'], ['state']],
 ]
