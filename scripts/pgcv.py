@@ -64,7 +64,7 @@ CONFIG = {
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
         'n_processes': 4,
-        'use_time_info': True,
+        'use_time_info': False,
     },
     'vfn_mdp_inacc': 0.1,  # bias / inaccuracy in the model for training vfn
     'experimenter': {
@@ -84,8 +84,8 @@ CONFIG = {
         },
     },
     'algorithm': {
-        'optimizer': 'natgrad',
-        'lr': 0.05,
+        'optimizer': 'rnatgrad',
+        'lr': 0.02,
         'c': 0.01,
         'max_kl': 0.1,
         'delta': 0.999,

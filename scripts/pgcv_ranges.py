@@ -4,11 +4,12 @@
 from scripts import ranges as R
 
 range_common = [
-    [['seed'], [x for x in range(1)]],
-    [['mdp', 'n_processes'], [8]],
+    [['seed'], [x for x in range(8)]],
+    [['mdp', 'n_processes'], [12]],
+    [['mdp', 'use_time_info'], [True, False]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
     [['experimenter', 'rollout_kwargs_pretrain', 'max_n_rollouts'], [None]],
-    [['algorithm', 'lr'], [0.05]],        
+    [['algorithm', 'lr'], [0.02]],
 ]
 
 range_comparison = [
@@ -20,11 +21,11 @@ range_cv = [
     [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
     [['algorithm', 'extra_vfn_training'], [True]],
     [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [50000]],
-    [['vfn_mdp_inacc'], [0.1]],   # biased 
+    [['vfn_mdp_inacc'], [0.1]],   # biased
 ]
 
 range_upper_bound = range_common + [
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [10000]],
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [100000]],
     [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
     [['algorithm', 'or_kwargs', 'cvtype'], ['state']],
 ]
