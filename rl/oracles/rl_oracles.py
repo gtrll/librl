@@ -377,14 +377,14 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             # Neglect the last rw, which is the default v,
             # Mixing of G_t, gamma is the discount in problem definition.
             gamma_decay = self._ae.gamma ** np.arange(len(rollout))  # T
-            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * qmc)
+            nqmc = self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * cv_onestep_ws[i] * qmc)
             gwocv += nqmc
             # Difference estimators: decur and defut.
             if self._cvtype == 'nocv':
                 pass
             elif self._cvtype == 'state':
                 vhat = self.predict_vfns(rollout.obs_short)
-                decur += self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * vhat)
+                decur += self._policy.logp_grad(rollout.obs_short, rollout.acs, gamma_decay * cv_onestep_ws[i] * vhat)
             elif self._cvtype == 'traj':
                 # Use np array operations to avoid another for loop over steps.
                 # CV for step t.
@@ -397,9 +397,9 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
                 ait = self._policy.derandomize(oit, rit)  # I T x d_a
                 qhatit = self.approximate_qfns(oit, ait)  # I T
-                vhatit = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
-                vhatit = np.repeat(vhatit, self._n_ac_samples)  # I T
-                gamma_decay_it = np.repeat(gamma_decay, self._n_ac_samples)  # I T
+                vhat = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
+                vhatit = np.repeat(vhat, self._n_ac_samples, axis=0)  # I T
+                gamma_decay_it = np.repeat(gamma_decay, self._n_ac_samples, axis=0)  # I T
                 advhatit = qhatit - vhatit
                 # Compute gamma^t E_A [ N_t (Qhat_t - Vhat_t)], for each t
                 # Approximate of E_A [N Qhat]
