@@ -85,7 +85,7 @@ CONFIG = {
     },
     'algorithm': {
         'optimizer': 'rnatgrad',
-        'lr': 0.05,
+        'lr': 0.02,
         'c': 0.01,
         'max_kl': 0.1,
         'delta': 0.999,
