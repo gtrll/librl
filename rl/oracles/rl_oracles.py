@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import pdb
 import copy
 import numpy as np
 from scipy import linalg as la
@@ -11,6 +10,7 @@ from rl.oracles.oracle import rlOracle
 from rl.core.oracles import LikelihoodRatioOracle
 from rl.core.function_approximators.policies import Policy
 from rl.core.datasets import Dataset
+from rl.core.utils.math_utils import compute_explained_variance
 
 
 class ValueBasedPolicyGradient(rlOracle):
@@ -286,22 +286,22 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._n_ac_samples = n_ac_samples  # number of MC samples for E_A
         self._cv_onestep_weighting = cv_onestep_weighting
         self._sim = sim
+        self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
+        self._ro = None
+
+        self._update_vfn = (cvtype != 'nocv')
+        self._update_dyn = (cvtype == 'traj')
+
         # Warm up for 'traj' cvtype, first do 'state' for some iterations.
+        # TEMPORARILY change cvtype.
+        self._switched_back = False
         if cvtype == 'traj' and switch_from_cvtype_state_at_itr is not None:
             self._switch_from_cvtype_state_at_itr = switch_from_cvtype_state_at_itr
         else:
             self._switch_from_cvtype_state_at_itr = None
-
-        self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
-        self._ro = None
-
-        self._switched_back = False
         if self._switch_from_cvtype_state_at_itr is not None:
             self._saved_cvtype = self._cvtype
             self._cvtype = 'state'
-
-        self._update_vfn = (cvtype != 'nocv')
-        self._update_dyn = (cvtype == 'traj')
 
     def update(self, ro, policy, itr=None, **kwargs):
         if (itr is not None and self._switch_from_cvtype_state_at_itr is not None and
@@ -326,6 +326,13 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             return self._sim._predict.__self__.update(np.hstack([obs_curr, acs]),
                                                       obs_next, **kwargs)
         return .0, .0, .0
+
+    def evaluate_vfn(self, ro):
+        # per-step importance due to off policy
+        w = np.concatenate(self._ae.weights(ro)) if self._ae.use_is else 1.0
+        vhat = (w*np.concatenate(self._ae.qfns(ro, self._ae.pe_lambd))).reshape([-1, 1])  # target
+        ev = compute_explained_variance(self._ae.vfn(ro['obs_short']), vhat)
+        return ev
 
     def preprocess_acs(self, acs):
         # XXX only suit for DartEnv.
@@ -392,7 +399,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 # The same randomness for all the steps to reduce variance.
                 # I: number of ac samples, rit: ac randomness in I T size.
                 rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
-                rit = np.exp(self._policy.lstd) * rit # NOTE need to scale
+                rit = np.exp(self._policy.lstd) * rit  # NOTE need to scale
                 rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
                 oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
                 ait = self._policy.derandomize(oit, rit)  # I T x d_a

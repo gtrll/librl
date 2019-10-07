@@ -1,17 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from scripts import ranges as R
-
 range_common = [
-    [['seed'], [x for x in range(4)]],
-    [['init_lstd'], [.0]],
-    [['mdp', 'n_processes'], [4]],
-    [['mdp', 'use_time_info'], [False]],
+    # [['seed'], [x for x in range(4)]],
+    [['seed'], [0]],
+    # [['exp_name'], ['unbiasedwithev']],
+    [['mdp', 'n_processes'], [8]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [50000]],
     [['experimenter', 'rollout_kwargs_pretrain', 'max_n_rollouts'], [None]],
     [['algorithm', 'delta'], [0.99]],
-    [['algorithm', 'lr'], [0.1]],
 ]
 
 range_comparison = [
@@ -20,7 +17,8 @@ range_comparison = [
 ]
 
 range_cv = [
-    [['algorithm', 'or_kwargs', 'n_ac_samples'], [1000]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [2000]],
+    [['algorithm', 'or_kwargs', 'cv_decay'], [1.0]],
     [['algorithm', 'extra_vfn_training'], [True]],
     [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [50000]],
     [['vfn_mdp_inacc'], [0.1]],   # biased

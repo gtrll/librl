@@ -42,21 +42,22 @@ def main(c):
 
 
 CONFIG = {
-    'top_log_dir': 'log_pg',
+    'top_log_dir': 'log',
     'exp_name': 'cp',
     'seed': 9,
     'mdp': {
         'envid': 'DartCartPole-v1',
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
-        'n_processes':1,
+        'n_processes':8,
+        'use_time_info': False,
     },
     'experimenter': {
         'run_kwargs': {
             'n_itrs': 100,
             'pretrain': True,
             'final_eval': False,
-            'save_freq': 5,
+            'save_freq': None,
         },
         'rollout_kwargs': {
             'min_n_samples': 2000,
@@ -64,12 +65,13 @@ CONFIG = {
         },
     },
     'algorithm': {
-        'optimizer':'adam',
-        'lr':0.001,
+        'optimizer':'rnatgrad',
+        'lr':0.05,
+        'c': 0.01,
         'max_kl':0.1,
         'delta':None,
-        'lambd':0.99,
-        'max_n_batches':2,
+        'lambd':1.0,
+        'max_n_batches':0,
         'n_warm_up_itrs':None,
         'n_pretrain_itrs':1,
     },

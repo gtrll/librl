@@ -92,6 +92,9 @@ def make_tf_normalizer(cls):
     decorated_cls.__qualname__ = cls.__qualname__
     return decorated_cls
 
+@make_tf_normalizer
+class tfNormalizer(pynor.Normalizer):
+    pass
 
 @make_tf_normalizer
 class tfNormalizerClip(pynor.NormalizerClip):

@@ -63,8 +63,8 @@ CONFIG = {
         'envid': 'DartCartPole-v1',
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
-        'n_processes': 4,
-        'use_time_info': False,
+        'n_processes': 8,
+        'use_time_info': True,
     },
     'vfn_mdp_inacc': 0.1,  # bias / inaccuracy in the model for training vfn
     'experimenter': {
@@ -75,34 +75,35 @@ CONFIG = {
             'save_freq': None,
         },
         'rollout_kwargs_pretrain': {
-            'min_n_samples': 20,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },
         'rollout_kwargs': {
-            'min_n_samples': 20,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },
     },
     'algorithm': {
         'optimizer': 'rnatgrad',
-        'lr': 0.02,
+        'lr': 0.1,
         'c': 0.01,
         'max_kl': 0.1,
-        'delta': 0.999,
+        'delta': 0.99,
         'lambd': 1.0,
-        'max_n_batches': 1,  # for ae
+        'max_n_batches': 0,  # for ae
+        'use_is': None,  # for ae
         'n_warm_up_itrs': 0,  # policy nor update
         'n_pretrain_itrs': 1,
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 500,
-            'cv_onestep_weighting': True,  # to reduce bias
-            'switch_from_cvtype_state_at_itr': None,
+            'n_ac_samples': 200,
+            'cv_onestep_weighting': False,  # to reduce bias
+            'switch_from_cvtype_state_at_itr': 5,
         },
         'vfn_ro_kwargs': {
-            'min_n_samples': 100,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },
         'extra_vfn_training': False,
@@ -112,7 +113,7 @@ CONFIG = {
     'vfn_dyn_kwargs': {
         'units': (128, 128),
         'predict_residue': True,
-        'max_n_samples': 200000,
+        'max_n_samples': 50000,
         'max_n_batches': None,
     },
     'init_lstd': -1.0,

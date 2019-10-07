@@ -29,14 +29,15 @@ class PolicyGradient(Algorithm):
         self.policy = policy
 
         # Create online learner.
-        scheduler = ol.scheduler.PowerScheduler(lr)
+        scheduler = ol.scheduler.PowerScheduler(lr, c=c)
         self.learner = get_learner(optimizer, policy, scheduler, max_kl)
         self._optimizer = optimizer
 
         # Create oracle.
         self.ae = ValueBasedAE(policy, vfn, gamma=gamma, delta=delta, lambd=lambd,
-                               horizon=horizon, use_is='one', max_n_batches=max_n_batches)
-        self.oracle = ValueBasedPolicyGradient(policy, self.ae)
+                               horizon=horizon, use_is=None, max_n_batches=max_n_batches)
+        self.oracle = ValueBasedPolicyGradient(policy, self.ae, biased=False, use_is=None,
+                                               use_log_loss=True)
 
         # Misc.
         self._n_pretrain_itrs = n_pretrain_itrs
@@ -56,7 +57,7 @@ class PolicyGradient(Algorithm):
             for _ in range(self._n_pretrain_itrs):
                 ros, _ = gen_ro(self.agent('behavior'))
                 ro = self.merge(ros)
-                self.oracle.update(ro, self.policy)
+                self.oracle.update(ro, self.policy, update_nor=False)
                 self.policy.update(xs=ro['obs_short'])
 
     def update(self, ros, agents):
@@ -68,7 +69,7 @@ class PolicyGradient(Algorithm):
             self.policy.update(xs=ro['obs_short'])
 
         with timed('Update oracle'):
-            _, ev0, ev1 = self.oracle.update(ro, self.policy)
+            _, ev0, ev1 = self.oracle.update(ro, self.policy, update_nor=False)
 
         with timed('Compute policy gradient'):
             g = self.oracle.grad(self.policy.variable)

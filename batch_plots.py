@@ -15,8 +15,15 @@ def main(exp, style):
         'defut_norm',
         'vfn_ev0',
         'vfn_ev1',
+        'vfn_extra_ev0',
+        'vfn_extra_ev1',
         'dyn_ev0',
         'dyn_ev1',
+        'std',
+        'stepsize',
+        'memory_mb',
+        'ExplainVarianceBefore\(AE\)',
+        'ExplainVarianceAfter\(AE\)',        
     ]
     
     logdir = os.path.join('/home/robotsrule/Dropbox/exp_results/expic_results', exp)
@@ -28,6 +35,10 @@ def main(exp, style):
             print('Plotting {}'.format(a))
             output = os.path.join(ld, '{}.pdf'.format(a))
             flags = ''
+            # if 'ev' in a:
+            #     flags = '--y_lower {}'.format(0.95)
+            # else:
+            #     flags = ''            
             if not style:
                 cmd = 'python utils/plot.py --dir {} --curve percentile --value {} {} &'.format(
                     ld, a, flags)
