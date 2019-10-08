@@ -348,19 +348,31 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             vs[dones] = .0
         return vs
 
-    def approximate_qfns(self, obs, acs):
+    def approximate_qfns(self, obs, acs, before_last=None):
         # Return a flat np array.
         assert len(obs) == len(acs)
         # rws should be based on acs without processing.
-        rws = self._sim._batch_reward(obs, sts=None, acs=acs)
+        rws = self._sim._batch_reward(obs[:, :-1], sts=None, acs=acs)
         acs1 = self.preprocess_acs(acs)
         next_obs = self._sim._predict(np.hstack([obs, acs1]))
-        next_dones = self._sim._batch_is_done(next_obs)
+        next_dones = self._sim._batch_is_done(next_obs[:, :-1])
+        if before_last is not None:
+            assert len(before_last) == len(next_dones)
+            next_dones[before_last] = True
         vs = self.predict_vfns(next_obs, next_dones)
         qs = rws + self._ae.delta * vs
         return qs
 
+    def _verify_batch_reward(self, ro):
+        # Verify batch_rewards!!!!
+        batch_rws = self._sim._batch_reward(ro['obs_short'][:, :-1],
+                                            sts=None,
+                                            acs=ro['acs'])
+        isclose_kwargs = {'atol': 1e-5, 'rtol': 1e-5}
+        assert np.allclose(batch_rws, ro['rws_short'], **isclose_kwargs)
+
     def grad(self, x):
+
         # Assign policy variables.
         self._policy.variable = x
         # Note that x is not used. _policy is set in update().
@@ -395,7 +407,9 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             elif self._cvtype == 'traj':
                 # Use np array operations to avoid another for loop over steps.
                 # CV for step t.
-                qhat = self.approximate_qfns(rollout.obs_short, rollout.acs)  # T
+                before_last = np.zeros(len(rollout), dtype=bool)  # T
+                before_last[-1] = True  # the one before last
+                qhat = self.approximate_qfns(rollout.obs_short, rollout.acs, before_last)  # T
                 # The same randomness for all the steps to reduce variance.
                 # I: number of ac samples, rit: ac randomness in I T size.
                 rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
@@ -403,7 +417,8 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
                 oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
                 ait = self._policy.derandomize(oit, rit)  # I T x d_a
-                qhatit = self.approximate_qfns(oit, ait)  # I T
+                before_last_it = np.repeat(before_last, self._n_ac_samples)
+                qhatit = self.approximate_qfns(oit, ait, before_last_it)  # I T
                 vhat = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
                 vhatit = np.repeat(vhat, self._n_ac_samples, axis=0)  # I T
                 gamma_decay_it = np.repeat(gamma_decay, self._n_ac_samples, axis=0)  # I T

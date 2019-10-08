@@ -805,6 +805,7 @@ class Reacher(DartEnvWithModel):
         return rew
 
     def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+        assert obs.shape[1] == len(self.observation_space.high)
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
         if omit_c and acs is None:
@@ -821,12 +822,13 @@ class Reacher(DartEnvWithModel):
             return rew
 
     def _batch_is_done(self, obs):
-        # Assume the heights is the last in obs.
+        assert obs.shape[1] == len(self.observation_space.high)        
         finite_ok = np.logical_not(np.isnan(obs).any(axis=1))
         vec = obs[:, -3:]
         dist_ok = la.norm(vec, axis=1) > 0.1
         horizon_ok = np.array([self._i_step < self._horizon] * len(obs), dtype=bool)
-        return np.logical_not(np.logical_and.reduce([finite_ok, dist_ok, horizon_ok]))
+        done = np.logical_not(np.logical_and.reduce([finite_ok, dist_ok, horizon_ok]))
+        return done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
