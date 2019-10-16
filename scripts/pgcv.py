@@ -24,30 +24,26 @@ def main(c):
     ac_shape = mdp.ac_shape
     if mdp.use_time_info:
         ob_shape = (np.prod(ob_shape)+1,)
-    policy = RobustKerasMLPGassian(ob_shape, ac_shape, name='policy',
-                                   init_lstd=c['init_lstd'],
-                                   units=c['policy_units'])
-    vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function',
-                              units=c['value_units'])
+    policy = RobustKerasMLPGassian(ob_shape, ac_shape, name='policy', **c['pol_kwargs'])
+    vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function', **c['vfn_kwargs'])
 
-    # Simulator for one-step simulation in TrajCV.
-    sim = create_sim_env(mdp.env, np.random.randint(np.iinfo(np.int32).max),
-                         use_time_info=mdp.use_time_info,
-                         **c['vfn_dyn_kwargs'])
+    # Simulator for Single-Step simulation in TrajCV.
+    ss_sim = create_sim_env(mdp.env,
+                            seed=np.random.randint(np.iinfo(np.int32).max),
+                            use_time_info=mdp.use_time_info, **c['ss_sim_kwargs'])
 
     # Create mdp for collecting extra samples for training vf.
-    inacc_env = ps.create_env(mdp.env.env.spec.id,
-                              seed=np.random.randint(np.iinfo(np.int32).max),
-                              inacc=c['vfn_mdp_inacc'])
-    c_mdp = dict(c['mdp'])
-    del c_mdp['envid']
-    vfn_mdp = MDP(inacc_env, **c_mdp)
+    vfn_sim = ps.create_env(mdp.env.env.spec.id,
+                            seed=np.random.randint(np.iinfo(np.int32).max),
+                            inacc=c['vfn_sim_inacc'])
+    conf = dict(c['mdp'])
+    del conf['envid']
+    vfn_sim = MDP(vfn_sim, **conf)
 
-    # Create algorithm
-    alg = PolicyGradientWithTrajCV(policy, vfn,
-                                   gamma=mdp.gamma, horizon=mdp.horizon,
-                                   sim=sim, vfn_mdp=vfn_mdp,
-                                   **c['algorithm'])
+    # Create learner.
+    c['algorithm']['ae_kwargs']['gamma'] = mdp.gamma
+    c['algorithm']['ae_kwargs']['horizon'] = mdp.horizon
+    alg = PolicyGradientWithTrajCV(policy, vfn, vfn_sim=vfn_sim, ss_sim=ss_sim, **c['algorithm'])
 
     # Let's do some experiments!
     exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'],
@@ -67,7 +63,6 @@ CONFIG = {
         'n_processes': 8,
         'use_time_info': True,
     },
-    'vfn_mdp_inacc': 0.1,  # bias / inaccuracy in the model for training vfn
     'experimenter': {
         'run_kwargs': {
             'n_itrs': 100,
@@ -85,16 +80,20 @@ CONFIG = {
         },
     },
     'algorithm': {
-        'optimizer': 'rnatgrad',
-        'lr': 0.1,
-        'c': 0.01,
-        'max_kl': 0.1,
-        'delta': 0.99,
-        'lambd': 1.0,
-        'max_n_batches': 0,  # for ae
-        'use_is': None,  # for ae
-        'n_warm_up_itrs': 0,  # policy nor update
-        'n_pretrain_itrs': 1,
+        'scheduler_kwargs': {
+            'eta': 0.1,
+            'c': 0.01,
+        },
+        'learner_kwargs': {
+            'optimizer': 'rnatgrad',
+            'max_kl': 0.1,
+        },
+        'ae_kwargs': {
+            'delta': 0.99,
+            'lambd': 1.0,
+            'max_n_batches': 0,
+            'use_is': None,
+        },
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,
@@ -103,21 +102,34 @@ CONFIG = {
             'cv_onestep_weighting': False,  # to reduce bias
             'switch_from_cvtype_state_at_itr': 5,
         },
-        'vfn_ro_kwargs': {
+        'vfn_sim_ro_kwargs': {
             'min_n_samples': 1000,
             'max_n_rollouts': None,
-        },
-        'extra_vfn_training': False,
+        },  # the sim for training vfn
+        'train_vfn_using_sim': False,
+        'n_warm_up_itrs': 0,  # policy nor update
+        'n_pretrain_itrs': 1,
+
     },
-    'policy_units': (64,),
-    'value_units': (128, 128),
-    'vfn_dyn_kwargs': {
+    'pol_kwargs': {
+        'units': (64,),
+        'init_lstd': -1.0,
+    },
+    'vfn_kwargs': {
         'units': (128, 128),
-        'predict_residue': True,
-        'max_n_samples': 50000,
-        'max_n_batches': None,
     },
-    'init_lstd': -1.0,
+    'ss_sim_kwargs': {
+        'inacc': None,  # set to None to use learned dyn
+        'dyn_kwargs': {
+            'units': (128, 128),
+            'predict_residue': True,
+            'max_n_samples': 50000,
+            'max_n_batches': None,
+            'clip': True,
+            'scale': True,
+        },
+    },
+    'vfn_sim_inacc': 0.1,  # bias / inaccuracy in the simulator for training vfn
 }
 
 

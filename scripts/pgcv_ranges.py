@@ -19,7 +19,7 @@ range_comparison = [
 range_cv = [
     [['algorithm', 'or_kwargs', 'n_ac_samples'], [2000]],
     [['algorithm', 'or_kwargs', 'cv_decay'], [.9]],
-    [['algorithm', 'extra_vfn_training'], [True]],
+    [['algorithm', 'train_vf_with_sim'], [True]],
     [['algorithm', 'vfn_ro_kwargs', 'min_n_samples'], [50000]],
     [['vfn_mdp_inacc'], [0.1]],   # biased
 ]

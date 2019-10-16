@@ -12,32 +12,32 @@ pydart.init()
 class EnvWithModel(ABC):
     def __init__(self, horizon, predict=None, rw_fun=None, seed=None, action_clip=None, state_clip=None):
         # action_clip, state_clip are lists of of upper/lower bounds, if not None
+        self.learned_predict = True if predict is not None else False
+        self.learned_reward = True if rw_fun is not None else False
+        self.reward = rw_fun if self.learned_reward else self.default_reward
+        self.predict = predict if self.learned_predict else self.default_predict
         self._state_raw = None
-        self._predict = predict
-        self._rw_fun = rw_fun
-        self._reward = self._rw_fun if self._rw_fun is not None else self._default_reward
-        self._horizon = horizon  # task horizon
+        self.horizon = horizon  # task horizon
         self._np_rand = np.random.RandomState(seed)
         self._i_step = 0  # a counter that records the current number of steps in episode
         self._action_clip = action_clip
         self._state_clip = state_clip
 
-        # XXX max_episode_steps maybe needed.
         class MySpec(object):
             def __init__(self, max_episode_steps):
                 self.max_episode_steps = max_episode_steps
         self.spec = MySpec(horizon)
 
     @abstractmethod
-    def _default_advance(self, a):
+    def default_predict(self, a):
         pass
 
     @abstractmethod
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         pass
 
     @abstractmethod
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         # if acs is None:
         # return (A, b, c) such that r(s,a) = 0.5*a'*A*a + b'*a + c
         # A: batch * dim_y * dim_y, or batch * dim_y
@@ -46,16 +46,15 @@ class EnvWithModel(ABC):
         #
         # else:
         # return r(s,a)
-
         pass
 
     @property
     @abstractmethod
-    def _is_done(self):
+    def is_done(self):
         pass
 
     @property
-    def _obs(self):
+    def obs(self):
         # Generate observation from state.
         # Default to simply be states.
         return self._state
@@ -68,13 +67,15 @@ class EnvWithModel(ABC):
     def reset(self):
         self._reset()
         self._i_step = 0
-        return self._obs
+        return self.obs
 
     @property
     def _state(self):
         # Ensure the state is constrained no matter how _reset is implemented.
         assert self._state_raw is not None, "Need to reset first"
-        return self._state_raw.copy() if self._state_clip is None else np.clip(self._state_raw, *self._state_clip)
+        if self._state_clip is None:
+            return self._state_raw.copy()
+        return np.clip(self._state_raw, *self._state_clip)
 
     @_state.setter
     def _state(self, val):
@@ -90,35 +91,18 @@ class EnvWithModel(ABC):
         '''Update the state maintained by the simulator, e.g. DartWorld for Dart.'''
         pass
 
-    def _advance(self, a):
-        if self._predict:
-            return self._predict(np.hstack([self._state, a]))
-        else:
-            return self._default_advance(a)
-
     def step(self, a):
-
-        # Advance.
         prev_state = self._state  # maybe used by reward computation
-        # Action clipping is part of the dynamics.
-        a = a if self._action_clip is None else np.clip(a, *self._action_clip)
-        if not self.action_space.contains(a):
-            message = 'Invalid action in step {}: {}'.format(self._i_step, a)
-            raise ValueError(message)
-
-        self._state = self._advance(a)
-
+        if self.learned_predict:
+            self._state = self.predict(np.hstack([self._state, a]))
+        else:
+            self._state = self.predict(a)
         self._i_step += 1
         self._update_simulator_state()
-
-        # Reward.
-        # XXX Should be the reward associated with the state before step.
-        reward = self._reward(prev_state, a)
-
-        # Is done.
-        done = self._is_done or self._i_step >= self._horizon
-
-        return self._obs, reward, done, {}
+        # Reward. Should be the reward associated with the state before step().
+        reward = self.reward(prev_state, a)
+        done = self.is_done or self._i_step >= self.horizon
+        return self.obs, reward, done, {}
 
     def render(self):
         pass
@@ -135,19 +119,19 @@ class EnvWithModel(ABC):
 
 
 class DartEnvWithModel(EnvWithModel):
-    '''XXX state is the state of the MDP, which is [q, dq], the same order as pydart skeleton.'''
+    '''Assume state of the MDP is [q, dq], the same order as pydart skeleton.'''
 
     def __init__(self, env, model_path, predict=None, rw_fun=None, model_inacc=None, seed=None):
 
         self._max_episode_steps = env._max_episode_steps
         env = env.env  # env is TimeLimit object..
         action_clip = [env.action_space.low, env.action_space.high]
-        state_clip = None  # XX no state clip!
+        state_clip = None  # XX state clip is not used
         self._ob_sp = env.observation_space
         self._ac_sp = env.action_space
         self._action_scale = env.action_scale
+        self._frame_skip = env.frame_skip        
         self.dt = env.dt
-        self._frame_skip = env.frame_skip
 
         # Dart objects.
         self._dart_world, self._robot = self._create_dart_objs(model_path, env)
@@ -201,8 +185,8 @@ class DartEnvWithModel(EnvWithModel):
         # Damping coeff for revolute joints.
         for j in self._robot.joints:
             if isinstance(j, pydart.joint.RevoluteJoint):
-                j.set_damping_coefficient(
-                    0, j.damping_coefficient(0) * self._rand_ratio(inacc, self._np_rand))
+                coeff = j.damping_coefficient(0) * self._rand_ratio(inacc, self._np_rand) 
+                j.set_damping_coefficient(0, coeff)
 
     def _update_simulator_state(self):
         self._robot.x = self._state
@@ -211,7 +195,7 @@ class DartEnvWithModel(EnvWithModel):
         # Reset the robot to any state.
         self._robot.x = s
         self._state = s
-        return self._obs
+        return self.obs
 
     def _a2tau(self, a):
         # Convert a into tau format (i.e. input to dartworld).
@@ -221,8 +205,9 @@ class DartEnvWithModel(EnvWithModel):
         pass
 
     @_require_robot_x_update_to_date()
-    def _default_advance(self, a):
+    def default_predict(self, a):
         # Ensures that dart robot agree with self._state (i.e. update-to-date).
+        a = a if self._action_clip is None else np.clip(a, *self._action_clip)  # clip
         assert np.allclose(self._robot.x, self._state)
         tau = self._a2tau(a * self._action_scale)
         for _ in range(self._frame_skip):
@@ -247,10 +232,10 @@ class Cartpole(DartEnvWithModel):
         super().__init__(env, model_path, predict, rw_fun, model_inacc, seed)
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         return 1.0
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = len(obs)
         ac_dim = len(self.action_space.high)
         if omit_c and acs is None:
@@ -263,7 +248,7 @@ class Cartpole(DartEnvWithModel):
         else:
             return rew
 
-    def _batch_is_done(self, obs):
+    def batch_is_done(self, obs):
         sts = obs
         sts_ok = np.abs(sts[:, 1]) <= .2
         finite_ok = np.isfinite(sts).all(axis=1)
@@ -272,7 +257,7 @@ class Cartpole(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         notdone = np.isfinite(self._state).all() and (np.abs(self._state[1]) <= .2)
         done = not notdone
         return done
@@ -302,7 +287,7 @@ class Hopper(DartEnvWithModel):
         return tau
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         idx = -2
         # if (self._robot.q[idx] < self._robot.q_lower[idx] + 0.05 or
         #         self._robot.q[idx] > self._robot.q_upper[idx] - 0.05):
@@ -319,7 +304,7 @@ class Hopper(DartEnvWithModel):
 
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = len(obs)
         ac_dim = len(self.action_space.high)
         idx = -2
@@ -341,7 +326,7 @@ class Hopper(DartEnvWithModel):
             acs = np.clip(acs, *self._action_clip)
             return rew - 0.001 * np.sum(np.square(acs), axis=1)
 
-    def _batch_is_done(self, obs):
+    def batch_is_done(self, obs):
         sts = obs[:, :-1]
         # Assume the hieghts is the last in obs.
         heights = obs[:, -1]
@@ -350,14 +335,14 @@ class Hopper(DartEnvWithModel):
         heights_ok = np.logical_and(heights > .7, heights < 1.8)
         angles_ok = abs(angles) < .4
         finite_ok = np.isfinite(sts).all(axis=1)
-        horizon_ok = np.array([self._i_step < self._horizon] * len(obs), dtype=bool)
+        horizon_ok = np.array([self._i_step < self.horizon] * len(obs), dtype=bool)
 
         return np.logical_not(np.logical_and.reduce([heights_ok, sts_ok, angles_ok,
                                                      finite_ok, horizon_ok]))
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         height = self._robot.bodynodes[2].com()[1]
         angle = self._state[2]
 
@@ -366,7 +351,7 @@ class Hopper(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         # obs = np.concatenate([self._robot.q[1:], np.clip(self._robot.dq, -10.0, 10.0)])
         # obs[0] = self._robot.bodynodes[2].com()[1]
         obs = np.concatenate([self._robot.q, self._robot.dq])
@@ -408,7 +393,7 @@ class Snake(DartEnvWithModel):
         return tau
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         q = prev_state[:self._robot.ndofs]
         qd = prev_state[self._robot.ndofs:]
 
@@ -418,7 +403,7 @@ class Snake(DartEnvWithModel):
         rew -= abs(prev_state[2]) * 0.1  # abs(self._state[2]) * 0.1
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
 
@@ -439,14 +424,14 @@ class Snake(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         return not (np.isfinite(self._state).all() and
                     (np.abs(self._state[2:]) < 100.0).all() and
                     abs(self._state[2]) < 1.5)
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         return self._state[1:]
 
     def _sample_initial_state(self):
@@ -464,7 +449,7 @@ class Dog(DartEnvWithModel):
         return tau
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         robot_x = self._robot.x
         self._robot.x = prev_state
         prev_dist = self._robot.bodynodes[0].com()[0]
@@ -478,7 +463,7 @@ class Dog(DartEnvWithModel):
 
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
 
@@ -494,7 +479,7 @@ class Dog(DartEnvWithModel):
                 self._robot.x = prev_state
                 self._state = prev_state
                 prev_dist = self._robot.bodynodes[0].com()[0]
-                self._robot.x = self._advance(a)  # ignore the nonlinearity of action here...
+                self._robot.x = self._predict(a)  # ignore the nonlinearity of action here...
                 curr_dist, height, _ = self._robot.bodynodes[0].com()
                 alive_bonus = 1.0
                 vel_rew = 0.6 * (curr_dist - prev_dist) / self.dt
@@ -513,14 +498,14 @@ class Dog(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         _, height, side_deviation = self._robot.bodynodes[0].com()
         return not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100.0).all() and
                     height > .7 and height < 1.8 and abs(side_deviation) < .4)
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         return np.concatenate([self._robot.q[1:], np.clip(self._robot.dq, -10.0, 10.0)])
 
     def _sample_initial_state(self):
@@ -549,7 +534,7 @@ class Walker3d(DartEnvWithModel):
         return tau
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         robot_x = self._robot.x
         self._robot.x = prev_state
         prev_dist = self._robot.bodynodes[0].com()[0]
@@ -575,12 +560,12 @@ class Walker3d(DartEnvWithModel):
         deviation_pen = 1e-3 * abs(side_deviation)
         rew = vel_rew + alive_bonus - action_pen - joint_pen - deviation_pen
 
-        if self._is_done:
+        if self.is_done:
             rew = 0.0
 
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
 
@@ -596,7 +581,7 @@ class Walker3d(DartEnvWithModel):
                 self._robot.x = prev_state
                 self._state = prev_state
                 prev_dist = self._robot.bodynodes[0].com()[0]
-                self._robot.x = self._advance(a)
+                self._robot.x = self._predict(a)
                 curr_dist, _, side_deviation = self._robot.bodynodes[0].com()
 
                 contacts = self._dart_world.collision_result.contacts
@@ -618,7 +603,7 @@ class Walker3d(DartEnvWithModel):
                 deviation_pen = 1e-3 * abs(side_deviation)
                 rew[i] = vel_rew + alive_bonus - joint_pen - deviation_pen
 
-                if self._is_done:
+                if self.is_done:
                     rew[i] = 0.0
 
                 # set it back
@@ -634,7 +619,7 @@ class Walker3d(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         def get_ang(v):
             d = self._robot.bodynodes[0].to_world(v) - self._robot.bodynodes[0].to_world(np.zeros(3))
             d /= la.norm(d)
@@ -652,7 +637,7 @@ class Walker3d(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         return np.concatenate([self._robot.q[1:], np.clip(self._robot.dq, -10.0, 10.0)])
 
     def _sample_initial_state(self):
@@ -676,7 +661,7 @@ class Walker2d(DartEnvWithModel):
         return tau
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         robot_x = self._robot.x
         self._robot.x = prev_state
         prev_dist = self._robot.bodynodes[0].com()[0]
@@ -697,12 +682,12 @@ class Walker2d(DartEnvWithModel):
         deviation_pen = 1e-3 * abs(side_deviation)
         rew = vel_rew + alive_bonus - action_pen - joint_pen - deviation_pen
 
-        if self._is_done:
+        if self.is_done:
             rew = 0.0
 
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
 
@@ -718,7 +703,7 @@ class Walker2d(DartEnvWithModel):
                 self._robot.x = prev_state
                 self._state = prev_state
                 prev_dist = self._robot.bodynodes[0].com()[0]
-                self._robot.x = self._advance(a)
+                self._robot.x = self._predict(a)
                 curr_dist, _, side_deviation = self._robot.bodynodes[0].com()
 
                 contacts = self._dart_world.collision_result.contacts
@@ -740,7 +725,7 @@ class Walker2d(DartEnvWithModel):
                 deviation_pen = 1e-3 * abs(side_deviation)
                 rew[i] = vel_rew + alive_bonus - joint_pen - deviation_pen
 
-                if self._is_done:
+                if self.is_done:
                     rew[i] = 0.0
 
                 # set it back
@@ -756,7 +741,7 @@ class Walker2d(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         def get_ang(v):
             d = self._robot.bodynodes[0].to_world(v) - self._robot.bodynodes[0].to_world(np.zeros(3))
             d /= la.norm(d)
@@ -774,7 +759,7 @@ class Walker2d(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         return np.concatenate([self._robot.q[1:], np.clip(self._robot.dq, -10.0, 10.0)])
 
     def _sample_initial_state(self):
@@ -792,19 +777,19 @@ class Reacher(DartEnvWithModel):
         return a
 
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _default_reward(self, prev_state, a):
+    def default_reward(self, prev_state, a):
         a = np.clip(a, *self._action_clip)  # clip first
         robot_x = self._robot.x
         self._robot.x = prev_state
         vec = self._robot.bodynodes[2].to_world(self.fingertip) - self.target
         rew_dist = 2.0 - la.norm(vec)  # to make it positive
-        rew_ctrl = -np.square(a).sum() * 0.1  # XX due to the action scale 10
+        rew_ctrl = -np.square(a).sum() * 0.1
         rew = rew_dist + rew_ctrl
 
         self._robot.x = robot_x
         return rew
 
-    def _batch_reward(self, obs, sts, acs=None, omit_c=False):
+    def batch_reward(self, obs, sts, acs=None, omit_c=False):
         assert obs.shape[1] == len(self.observation_space.high)
         n = obs.shape[0]
         ac_dim = len(self.action_space.high)
@@ -821,18 +806,18 @@ class Reacher(DartEnvWithModel):
             rew -= ac_pen
             return rew
 
-    def _batch_is_done(self, obs):
-        assert obs.shape[1] == len(self.observation_space.high)        
+    def batch_is_done(self, obs):
+        assert obs.shape[1] == len(self.observation_space.high)
         finite_ok = np.logical_not(np.isnan(obs).any(axis=1))
         vec = obs[:, -3:]
         dist_ok = la.norm(vec, axis=1) > 0.1
-        horizon_ok = np.array([self._i_step < self._horizon] * len(obs), dtype=bool)
+        horizon_ok = np.array([self._i_step < self.horizon] * len(obs), dtype=bool)
         done = np.logical_not(np.logical_and.reduce([finite_ok, dist_ok, horizon_ok]))
         return done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _is_done(self):
+    def is_done(self):
         vec = self._robot.bodynodes[2].to_world(self.fingertip) - self.target
         dist = la.norm(vec)
         done = not (np.isfinite(self._state).all() and (dist > 0.1))
@@ -840,7 +825,7 @@ class Reacher(DartEnvWithModel):
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
-    def _obs(self):
+    def obs(self):
         vec = self._robot.bodynodes[2].to_world(self.fingertip) - self.target
         return np.concatenate([np.cos(self._robot.q), np.sin(self._robot.q), self.target,
                                self._robot.dq, vec])

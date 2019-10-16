@@ -88,9 +88,9 @@ class JobRunner:
         while True:
             if n<N:
                 try:
-                    for i in range(n,N):
+                    for i in range(n, N):
                         self._put(jobs[i])
-                        n=i+1
+                        n = i+1
                 except mp.queues.Full:
                     pass
 

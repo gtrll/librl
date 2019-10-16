@@ -7,7 +7,7 @@ import psutil
 from rl.algorithms.algorithm import Algorithm, PolicyAgent
 from rl.algorithms.utils import get_learner
 from rl.adv_estimators.advantage_estimator import ValueBasedAE
-from rl.oracles.rl_oracles import ValueBasedPolicyGradientWithTrajCV
+from rl.oracles.rl_oracles_cv import ValueBasedPolicyGradientWithTrajCV
 from rl import online_learners as ol
 from rl.policies import Policy
 from rl.core.utils.misc_utils import timed
@@ -16,35 +16,30 @@ from rl.core.utils import logz
 
 class PolicyGradientWithTrajCV(Algorithm):
     def __init__(self, policy, vfn,
-                 optimizer='adam',
-                 lr=1e-3, c=1e-3, max_kl=0.1,
-                 horizon=None, gamma=1.0, delta=None, lambd=0.99,
-                 max_n_batches=2, use_is='one',
+                 scheduler_kwargs=None, learner_kwargs=None, ae_kwargs=None,
                  n_warm_up_itrs=None, n_pretrain_itrs=1,
-                 sim=None, or_kwargs=None,
-                 extra_vfn_training=False, vfn_ro_kwargs=None, vfn_mdp=None,
-                 ):
-
+                 train_vfn_using_sim=False, vfn_sim_ro_kwargs=None, vfn_sim=None,
+                 or_kwargs=None, ss_sim=None):
+        # ss_sim: Single-Step simulator to construct Q function.
         assert isinstance(policy, Policy)
         self.vfn = vfn
         self.policy = policy
 
         # Create online learner.
-        scheduler = ol.scheduler.PowerScheduler(lr, c=c)
-        self.learner = get_learner(optimizer, policy, scheduler, max_kl)
-        self._optimizer = optimizer
+        scheduler = ol.scheduler.PowerScheduler(**scheduler_kwargs)
+        self.learner = get_learner(policy=policy, scheduler=scheduler, **learner_kwargs)
+        self._optimizer = learner_kwargs['optimizer']
 
         # Create oracle.
         # ae is only for value function estimation, not used for adv computation,
         # therefore use_is can be set to 'one'.
-        self.ae = ValueBasedAE(policy, vfn, gamma=gamma, delta=delta, lambd=lambd,
-                               horizon=horizon, use_is=use_is, max_n_batches=max_n_batches)
-        self.oracle = ValueBasedPolicyGradientWithTrajCV(policy, self.ae, sim=sim, **or_kwargs)
+        self.ae = ValueBasedAE(policy, vfn, **ae_kwargs)
+        self.oracle = ValueBasedPolicyGradientWithTrajCV(policy, self.ae, sim=ss_sim, **or_kwargs)
 
         # Misc.
-        self._extra_vfn_training = extra_vfn_training
-        self._vfn_ro_kwargs = cp.deepcopy(vfn_ro_kwargs)
-        self._vfn_mdp = vfn_mdp
+        self._train_vfn_using_sim = train_vfn_using_sim
+        self._vfn_sim_ro_kwargs = cp.deepcopy(vfn_sim_ro_kwargs)
+        self._vfn_sim = vfn_sim  # is an MDP
         self._n_pretrain_itrs = n_pretrain_itrs
         if n_warm_up_itrs is None:
             n_warm_up_itrs = float('Inf')
@@ -65,39 +60,37 @@ class PolicyGradientWithTrajCV(Algorithm):
                 self.oracle.update_vfn(ro)
                 self.oracle.update_dyn(ro)
                 self.policy.update(xs=ro['obs_short'])
-                
 
     def update(self, ros, agents):
         # Aggregate data
         ro = self.merge(ros)
-        evs = {}
+        evs = {}  # explained variances
 
-        # Update input normalizer for whitening
+        # Update input normalizer for whitening.
         if self._itr < self._n_warm_up_itrs:
             self.policy.update(xs=ro['obs_short'])
 
         with timed('Update oracle'):
             self.oracle.update(ro, self.policy, itr=self._itr)
 
-        if self._extra_vfn_training:
-            with timed('Update vfn (Extra)'):
-                with timed('Collect samples'):
-                    vfn_ros, _ = self._vfn_mdp.run(self.agent('behavior'), **self._vfn_ro_kwargs)
-                    vfn_ro = self.merge(vfn_ros)
-                with timed('Update vfn'):
-                    _, evs['vfn_extra_ev0'], evs['vfn_extra_ev1'] = self.oracle.update_vfn(vfn_ro)
+        if self._train_vfn_using_sim:
+            with timed('Collect sim samples for updating vfn'):
+                sim_ros, _ = self._vfn_sim.run(self.agent('behavior'), **self._vfn_sim_ro_kwargs)
+                sim_ro = self.merge(sim_ros)
+            with timed('Update vfn using sim'):
+                _, evs['vfn_extra_ev0'], evs['vfn_extra_ev1'] = self.oracle.update_vfn(sim_ro)
 
         with timed('Compute policy gradient'):
             grads = self.oracle.grad(self.policy.variable)
             g = grads['g']
 
-        with timed('Update vfn and dyn if needed'):
-            if not self._extra_vfn_training:
+        with timed('Update vfn and dyn'):
+            if not self._train_vfn_using_sim:
                 _, evs['vfn_ev0'], evs['vfn_ev1'] = self.oracle.update_vfn(ro)
             else:
                 evs['vfn_ev0'] = evs['vfn_ev1'] = self.oracle.evaluate_vfn(ro)
             _, evs['dyn_ev0'], evs['dyn_ev1'] = self.oracle.update_dyn(ro)
-            
+
         with timed('Policy update'):
             if isinstance(self.learner, ol.FisherOnlineOptimizer):
                 if self._optimizer == 'trpo_wl':  # use also the loss function
