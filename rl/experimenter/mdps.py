@@ -2,14 +2,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import time, copy
+import time
+import copy
 import numpy as np
 from functools import partial
 from rl.core.datasets import Dataset
 from rl.core.utils.mp_utils import Worker, JobRunner
 
+
 class MDP:
     """ A wrapper for gym env. """
+
     def __init__(self, env, gamma=1.0, horizon=None, use_time_info=True, v_end=None,
                  n_processes=1, min_ro_per_process=1):
         self.env = env  # a gym-like env
@@ -48,7 +51,7 @@ class MDP:
 
     def run(self, agent, min_n_samples=None, max_n_rollouts=None,
             with_animation=False):
-        if self._n_processes>1: # parallel data collection
+        if self._n_processes > 1:  # parallel data collection
             if not hasattr(self, '_job_runner'):  # start the process
                 workers = [Worker(method=self._gen_ro) for _ in range(self._n_processes)]
                 self._job_runner = JobRunner(workers)
@@ -59,17 +62,17 @@ class MDP:
                 max_n_rollouts = self._min_ro_per_process
             if min_n_samples is not None:
                 min_n_samples = int(min_n_samples/N)
-            kwargs = {'min_n_samples':min_n_samples,
-                      'max_n_rollouts':max_n_rollouts,
-                      'with_animation':False}
+            kwargs = {'min_n_samples': min_n_samples,
+                      'max_n_rollouts': max_n_rollouts,
+                      'with_animation': False}
             # start data collection
             job = ((agent,), kwargs)
             res = self._job_runner.run([job]*N)
             ros, agents = [r[0] for r in res], [r[1] for r in res]
         else:
-            kwargs = {'min_n_samples':min_n_samples,
-                      'max_n_rollouts':max_n_rollouts,
-                      'with_animation':with_animation}
+            kwargs = {'min_n_samples': min_n_samples,
+                      'max_n_rollouts': max_n_rollouts,
+                      'with_animation': with_animation}
             ro, agent = self._gen_ro(agent, **kwargs)
             ros, agents = [ro], [agent]
         return ros, agents
@@ -77,8 +80,9 @@ class MDP:
     @staticmethod
     def generate_rollout(agent, *args, **kwargs):  # a wrapper
         ro = generate_rollout(agent.pi, agent.logp, *args,
-                            callback=agent.callback, **kwargs)
+                              callback=agent.callback, **kwargs)
         return ro, agent
+
 
 class Rollout:
     """ A container for storing statistics along a trajectory.
@@ -89,34 +93,40 @@ class Rollout:
         actions.)
 
     """
-    def __init__(self, obs, acs, rws,  done, logp, weight=1.0):
-        """
-            `obs`, `acs`, `rws`  are lists of floats
-            `done` is bool
-            `logp` is a callable function or an nd.array
 
-            `obs`, `rws` can be of length of `acs` or one element longer if they contain the
+    def __init__(self, sts, obs, acs, rws, done, use_time_info, logp, weight=1.0):
+        """
+            `sts`, `obs`, `acs`, `rws`  are lists of floats
+            `done`, `use_time_info` is bool
+            `logp` is a callable function or an nd.array
+             `sts`, `obs`, `rws` can be of length of `acs` or one element longer if they contain the
             terminal observation/reward.
         """
         self.__attrlist = []
 
-        assert len(obs)==len(rws)
-        assert (len(obs) == len(acs)+1) or (len(obs)==len(acs))
+        assert len(sts) == len(obs) and len(obs) == len(rws)
+        assert (len(obs) == len(acs)+1) or (len(obs) == len(acs))
+        self.sts = np.array(sts)
         self.obs = np.array(obs)
         self.acs = np.array(acs)
         self.rws = np.array(rws)
         self.dns = np.zeros((len(self)+1,))
         self.dns[-1] = float(done)
+        self.uts = np.repeat(use_time_info, len(self))
         if isinstance(logp, np.ndarray):
-            assert len(logp)==len(acs)
+            assert len(logp) == len(acs)
             self.lps = logp
         else:
             self.lps = logp(self.obs[:len(self)], self.acs)
         self.weight = weight
 
     @property
+    def sts_short(self):
+        return self.sts[:len(self), :]
+
+    @property
     def obs_short(self):
-        return self.obs[:len(self),:]
+        return self.obs[:len(self), :]
 
     @property
     def rws_short(self):
@@ -131,21 +141,26 @@ class Rollout:
 
     def __setattr__(self, name, value):
         # Set per-rollout attributes, which are not sliced when self[ind] is called.
-        if not name in ('_Rollout__attrlist','obs', 'acs', 'rws', 'lps', 'dns', 'lps'):
+        if not name in ('_Rollout__attrlist', 'sts', 'obs', 'acs', 'rws', 'lps', 'dns',
+                        'uts', 'lps'):
             self._Rollout__attrlist.append(name)
         object.__setattr__(self, name, value)
 
     def __getitem__(self, key):
         assert isinstance(key, slice) or isinstance(key, int)
-        obs=self.obs[key]
-        acs=self.acs[key]
-        rws=self.rws[key]
-        logp=self.lps[key]
+        sts = self.sts[key]
+        obs = self.obs[key]
+        acs = self.acs[key]
+        rws = self.rws[key]
+        logp = self.lps[key]
         done = bool(self.dns[key][-1])
-        rollout = Rollout(obs=obs, acs=acs, rws=rws, done=done, logp=logp)
+        use_time_info = self.use_time_info[0]
+        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws,
+                          done=done, use_time_info=use_time_info, logp=logp)
         for name in self._Rollout__attrlist:
             setattr(rollout, name, copy.deepcopy(getattr(self, name)))
         return rollout
+
 
 def generate_rollout(pi, logp, env,
                      callback=None,
@@ -154,7 +169,6 @@ def generate_rollout(pi, logp, env,
                      min_n_samples=None, max_n_rollouts=None,
                      max_rollout_len=None,
                      with_animation=False):
-
     """ Collect rollouts until we have enough samples or rollouts.
 
         Each rollout is generated by repeatedly calling the behavior `pi`. At
@@ -208,44 +222,47 @@ def generate_rollout(pi, logp, env,
         return x if t_state is None else np.concatenate([x.flatten(), (t_state(t),)])
 
     def step(ac, tm):
-        ob, rw, dn, info = env.step(ac)  # current reward, next ob and dn
-        return post_process(ob, tm), rw, dn, info
+        st, ob, rw, dn, info = env.step(ac)  # current reward, next ob and dn
+        return st, post_process(ob, tm), rw, dn, info
 
     def reset(tm):
-        ob = env.reset()
-        return post_process(ob, tm)
+        st, ob = env.reset()
+        return st, post_process(ob, tm)
 
     # Start trajectory-wise rollouts.
     n_samples = 0
     rollouts = []
     while True:
-        animate_this_rollout = len(rollouts)==0 and with_animation
-        obs, acs, rws, = [], [], []
+        animate_this_rollout = len(rollouts) == 0 and with_animation
+        sts, obs, acs, rws, = [], [], [], []
         tm = 0  # time step
         dn = False
-        ob = reset(tm)
+        st, ob = reset(tm)
         # each trajectory
         while True:
             if animate_this_rollout:
                 env.render()
                 time.sleep(0.05)
-            ac = pi(ob, tm, dn) # apply action and get to the next state
+            ac = pi(ob, tm, dn)  # apply action and get to the next state
             if ac is None:
                 dn = False  # the learner decides to stop collecting data
                 break
             # ob, ac, rw are at tm
+            sts.append(st)
             obs.append(ob)
             acs.append(ac)
-            ob, rw, dn, _ = step(ac, tm)
+            st, ob, rw, dn, _ = step(ac, tm)
             rws.append(rw)
             tm += 1
             if dn or tm >= max_rollout_len:
-                break # due to steps limit or entering an absorbing state
+                break  # due to steps limit or entering an absorbing state
         # save the terminal observation/reward
+        sts.append(st)
         obs.append(ob)
         rws.append(v_end(ob, dn))  # terminal reward
         # end of one rollout (`logp` is called once)
-        rollout = Rollout(obs=obs, acs=acs, rws=rws, done=dn, logp=logp)
+        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws,
+                          done=dn, use_time_info=t_state is not None, logp=logp)
         if callback is not None:
             callback(rollout)
         rollouts.append(rollout)
@@ -254,5 +271,3 @@ def generate_rollout(pi, logp, env,
             break
     ro = Dataset(rollouts)
     return ro
-
-

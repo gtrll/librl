@@ -1,8 +1,8 @@
 # Copyright (c) 2019 Georgia Tech Robot Learning Lab
 # Licensed under the MIT License.
-import gym
-from rl import sims
 
+from rl import sims
+from scripts.utils import parser as ps
 
 # Env.
 ENVID2MODELENV = {
@@ -16,17 +16,17 @@ ENVID2MODELENV = {
 }
 
 
-def create_sim_env(env, seed=None, use_time_info=True, inacc=None, **dyn_kwargs):
+def create_sim_dartenv(env, seed=None, use_time_info=True, inacc=None, **dyn_kwargs):
+
     if use_time_info:
-        ob_shape = (len(env.reset()) + 1, )
+        ob_shape = (len(env.observation_space.low) + 1, )
     else:
-        ob_shape = (len(env.reset()), )
+        ob_shape = (len(env.observation_space.low), )
     ac_shape = env.action_space.shape
     envid = env.env.spec.id
     if inacc is None:
         dyn = sims.Dynamics(ob_shape, ac_shape, name='dynamics', env=env, **dyn_kwargs)
         sim = ENVID2MODELENV[envid](env, predict=dyn.predict, seed=seed)
     else:
-        sim = gym.make(envid, inacc=inacc)
-        sim.seed(seed)
+        ps.create_dartenv(envid, seed)
     return sim

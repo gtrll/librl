@@ -1,8 +1,8 @@
 # Copyright (c) 2019 Georgia Tech Robot Learning Lab
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
-import os, time, git, gym
+import pdb
+import os, time, git, gym, types
 import tensorflow as tf
 import numpy as np
 from rl.experimenter import MDP
@@ -35,17 +35,28 @@ def configure_log(config, unique_log_dir=False):
     logz.configure_output_dir(log_dir)
     logz.save_params(config)
 
-def create_env(envid, seed, **kwargs):
+def create_dartenv(envid, seed, **kwargs):
     # kwargs: additional flags for creating the gym env.
     env = gym.make(envid, **kwargs)
     env.seed(seed)
+    # Need to overload step and reset to incorporate state information.
+    env.step_old = env.step
+    env.reset_old = env.reset
+    def step(self, a):
+        res = env.step_old(a)
+        return (self.state,) + res
+    def reset(self):
+        ob = self.reset_old()
+        return self.state, ob
+    env.step = types.MethodType(step, env)
+    env.reset = types.MethodType(reset, env)
     return env
 
 def setup_mdp(c, seed):
     """ Set seed and then create an MDP. """
     c = dict(c)
     envid = c['envid']
-    env = create_env(envid, seed)
+    env = create_dartenv(envid, seed)
     tf.keras.backend.clear_session()
     # fix randomness
     if tf.__version__[0]=='2':

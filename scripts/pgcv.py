@@ -5,7 +5,7 @@ import numpy as np
 from scripts.utils import parser as ps
 from rl import experimenter as Exp
 from rl.experimenter import MDP
-from rl.sims import create_sim_env
+from rl.sims import create_sim_dartenv
 from rl.algorithms import PolicyGradientWithTrajCV
 from rl.core.function_approximators.policies.tf2_policies import RobustKerasMLPGassian
 from rl.core.function_approximators.supervised_learners import SuperRobustKerasMLP
@@ -28,14 +28,14 @@ def main(c):
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function', **c['vfn_kwargs'])
 
     # Simulator for Single-Step simulation in TrajCV.
-    ss_sim = create_sim_env(mdp.env,
+    ss_sim = create_sim_dartenv(mdp.env,
                             seed=np.random.randint(np.iinfo(np.int32).max),
                             use_time_info=mdp.use_time_info, **c['ss_sim_kwargs'])
 
     # Create mdp for collecting extra samples for training vf.
-    vfn_sim = ps.create_env(mdp.env.env.spec.id,
-                            seed=np.random.randint(np.iinfo(np.int32).max),
-                            inacc=c['vfn_sim_inacc'])
+    vfn_sim = ps.create_dartenv(mdp.env.env.spec.id,
+                                seed=np.random.randint(np.iinfo(np.int32).max),
+                                inacc=c['vfn_sim_inacc'])
     conf = dict(c['mdp'])
     del conf['envid']
     vfn_sim = MDP(vfn_sim, **conf)
@@ -60,7 +60,7 @@ CONFIG = {
         # 'envid': 'DartReacher3d-v1',
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
-        'n_processes': 8,
+        'n_processes': 1,
         'use_time_info': True,
     },
     'experimenter': {
