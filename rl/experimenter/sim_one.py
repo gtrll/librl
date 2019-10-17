@@ -1,7 +1,7 @@
 from functools import partial
 import numpy as np
 from gym.envs.dart import DartEnv
-from rl.experimenter import MDP
+from rl.experimenter import MDP, wrap_gym_env
 from rl.core.utils.mp_utils import Worker, JobRunner
 
 
@@ -22,12 +22,17 @@ class SimOne:
     def sim_one(env, sts, acs, tms, t_state=None):
         # tms is a list. use a list of None to turn it off.
         def set_and_step(st, ac, tm):
-            env.set_state(st[:len(st)//2], st[len(st)//2:])  # qpos, qvel, assume qpos first
+            env.set_state(st[:len(st)//2], st[len(st)//2:])  # qpos, qvel
             _, next_ob, rw, next_dn, info = env.step(ac)
             if tm is not None and t_state is not None:
                 next_ob = np.concatenate([next_ob.flatten(), (t_state(tm+1),)])  # time step for next
             return next_ob, rw, next_dn, info
 
+        # XX wrap env if necessary.
+        try:
+            _, _ = env.reset()
+        except ValueError:
+            env = wrap_gym_env(env)
         next_obs, rws, next_dns = [], [], []
         for st, ac, tm in zip(sts, acs, tms):
             next_ob, rw, next_dn, _ = set_and_step(st, ac, tm)

@@ -4,6 +4,7 @@
 
 import time
 import copy
+import types
 import numpy as np
 from functools import partial
 from rl.core.datasets import Dataset
@@ -159,6 +160,19 @@ class Rollout:
             setattr(rollout, name, copy.deepcopy(getattr(self, name)))
         return rollout
 
+def wrap_gym_env(env):
+    # Need to overload step and reset to incorporate state information.
+    env.step_old = env.step
+    env.reset_old = env.reset
+    def step(self, a):
+        res = env.step_old(a)
+        return (self.state,) + res
+    def reset(self):
+        ob = self.reset_old()
+        return self.state, ob
+    env.step = types.MethodType(step, env)
+    env.reset = types.MethodType(reset, env)
+    return env
 
 def generate_rollout(pi, logp, env,
                      callback=None,
@@ -205,6 +219,11 @@ def generate_rollout(pi, logp, env,
 
     """
     # Configs
+    # XX wrap env if necessary.
+    try:
+        _, _ = env.reset()
+    except ValueError:
+        env = wrap_gym_env(env)
     assert (min_n_samples is not None) or (max_n_rollouts is not None)  # so we can stop
     min_n_samples = min_n_samples or float('Inf')
     max_n_rollouts = max_n_rollouts or float('Inf')

@@ -4,7 +4,7 @@
 import os, time, git, gym, types
 import tensorflow as tf
 import numpy as np
-from rl.experimenter import MDP
+from rl.experimenter import MDP, wrap_gym_env
 from rl.core.utils import logz
 
 
@@ -38,18 +38,7 @@ def create_dartenv(envid, seed, **kwargs):
     # kwargs: additional flags for creating the gym env.
     env = gym.make(envid, **kwargs)
     env.seed(seed)
-    # Need to overload step and reset to incorporate state information.
-    env.step_old = env.step
-    env.reset_old = env.reset
-    def step(self, a):
-        res = env.step_old(a)
-        return (self.state,) + res
-    def reset(self):
-        ob = self.reset_old()
-        return self.state, ob
-    env.step = types.MethodType(step, env)
-    env.reset = types.MethodType(reset, env)
-    return env
+    return wrap_gym_env(env)
 
 def setup_mdp(c, seed):
     """ Set seed and then create an MDP. """

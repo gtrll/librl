@@ -61,7 +61,7 @@ CONFIG = {
         # 'envid': 'DartReacher3d-v1',
         'horizon': 1000,  # the max length of rollouts in training
         'gamma': 1.0,
-        'n_processes': 1,
+        'n_processes': 2,
         'use_time_info': True,
     },
     'experimenter': {
@@ -99,9 +99,9 @@ CONFIG = {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 20,
+            'n_ac_samples': 200,
             'cv_onestep_weighting': False,  # to reduce bias
-            'switch_from_cvtype_state_at_itr': 5,
+            'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_sim_ro_kwargs': {
             'min_n_samples': 1000,
