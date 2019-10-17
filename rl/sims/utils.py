@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 from rl import sims
+from rl.experimenter import SimOne
 from scripts.utils import parser as ps
 
 # Env.
@@ -16,7 +17,8 @@ ENVID2MODELENV = {
 }
 
 
-def create_sim_dartenv(env, seed=None, use_time_info=True, inacc=None, **dyn_kwargs):
+def create_sim_dartenv(env, inacc=None, horizon=None, seed=None, use_time_info=True, n_processes=1,
+                       **dyn_kwargs):
 
     if use_time_info:
         ob_shape = (len(env.observation_space.low) + 1, )
@@ -28,5 +30,6 @@ def create_sim_dartenv(env, seed=None, use_time_info=True, inacc=None, **dyn_kwa
         dyn = sims.Dynamics(ob_shape, ac_shape, name='dynamics', env=env, **dyn_kwargs)
         sim = ENVID2MODELENV[envid](env, predict=dyn.predict, seed=seed)
     else:
-        ps.create_dartenv(envid, seed)
+        sim = ps.create_dartenv(envid, seed, inacc=inacc)
+        sim = SimOne(sim, horizon=horizon, use_time_info=use_time_info, n_processes=n_processes)
     return sim

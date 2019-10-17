@@ -29,8 +29,9 @@ def main(c):
 
     # Simulator for Single-Step simulation in TrajCV.
     ss_sim = create_sim_dartenv(mdp.env,
-                            seed=np.random.randint(np.iinfo(np.int32).max),
-                            use_time_info=mdp.use_time_info, **c['ss_sim_kwargs'])
+                                horizon=mdp.horizon,
+                                seed=np.random.randint(np.iinfo(np.int32).max),
+                                use_time_info=mdp.use_time_info, **c['ss_sim_kwargs'])
 
     # Create mdp for collecting extra samples for training vf.
     vfn_sim = ps.create_dartenv(mdp.env.env.spec.id,
@@ -98,7 +99,7 @@ CONFIG = {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 200,
+            'n_ac_samples': 20,
             'cv_onestep_weighting': False,  # to reduce bias
             'switch_from_cvtype_state_at_itr': 5,
         },
@@ -119,7 +120,8 @@ CONFIG = {
         'units': (128, 128),
     },
     'ss_sim_kwargs': {
-        'inacc': None,  # set to None to use learned dyn
+        'inacc': 0.1,  # set to None to use learned dyn
+        'n_processes': 2,  # used when biased sim is used, i.e. inacc is not None
         'dyn_kwargs': {
             'units': (128, 128),
             'predict_residue': True,

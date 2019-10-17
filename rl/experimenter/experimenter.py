@@ -6,7 +6,7 @@ import functools, copy
 import time, os
 import numpy as np
 from rl.algorithms import Algorithm
-from rl.experimenter.mdps import MDP
+from rl.experimenter import MDP
 from rl.core.utils.misc_utils import safe_assign, timed
 from rl.core.utils import logz
 

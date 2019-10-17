@@ -49,8 +49,7 @@ class MDP:
     def ac_shape(self):
         return self.env.action_space.shape
 
-    def run(self, agent, min_n_samples=None, max_n_rollouts=None,
-            with_animation=False):
+    def run(self, agent, min_n_samples=None, max_n_rollouts=None, with_animation=False):
         if self._n_processes > 1:  # parallel data collection
             if not hasattr(self, '_job_runner'):  # start the process
                 workers = [Worker(method=self._gen_ro) for _ in range(self._n_processes)]
@@ -96,14 +95,13 @@ class Rollout:
 
     def __init__(self, sts, obs, acs, rws, done, use_time_info, logp, weight=1.0):
         """
-            `sts`, `obs`, `acs`, `rws`  are lists of floats
+            `sts`, `obs`, `acs`, `rws` are lists of floats
             `done`, `use_time_info` is bool
             `logp` is a callable function or an nd.array
-             `sts`, `obs`, `rws` can be of length of `acs` or one element longer if they contain the
-            terminal observation/reward.
+             `sts`, `obs`, `rws` can be of length of `acs` or one element longer 
+             if they contain the terminal observation/reward.
         """
         self.__attrlist = []
-
         assert len(sts) == len(obs) and len(obs) == len(rws)
         assert (len(obs) == len(acs)+1) or (len(obs) == len(acs))
         self.sts = np.array(sts)
@@ -234,7 +232,7 @@ def generate_rollout(pi, logp, env,
     rollouts = []
     while True:
         animate_this_rollout = len(rollouts) == 0 and with_animation
-        sts, obs, acs, rws, = [], [], [], []
+        sts, obs, acs, rws = [], [], [], []
         tm = 0  # time step
         dn = False
         st, ob = reset(tm)
@@ -261,7 +259,7 @@ def generate_rollout(pi, logp, env,
         obs.append(ob)
         rws.append(v_end(ob, dn))  # terminal reward
         # end of one rollout (`logp` is called once)
-        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws,
+        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws, 
                           done=dn, use_time_info=t_state is not None, logp=logp)
         if callback is not None:
             callback(rollout)

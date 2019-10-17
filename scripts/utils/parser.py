@@ -1,7 +1,6 @@
 # Copyright (c) 2019 Georgia Tech Robot Learning Lab
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-import pdb
 import os, time, git, gym, types
 import tensorflow as tf
 import numpy as np

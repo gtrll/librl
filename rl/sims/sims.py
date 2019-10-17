@@ -48,10 +48,13 @@ class EnvWithModel(ABC):
         # return r(s,a)
         pass
 
+    def batch_is_done(self, obs, tms):
+        assert np.all(tms <= self.horizon)
+        return tms == self.horizon
+
     @property
-    @abstractmethod
     def is_done(self):
-        pass
+        return self._i_step >= self.horizon
 
     @property
     def obs(self):
@@ -59,15 +62,9 @@ class EnvWithModel(ABC):
         # Default to simply be states.
         return self._state
 
-    @abstractmethod
-    def _reset(self):
-        # Reset _state
-        pass
-
     def reset(self):
-        self._reset()
         self._i_step = 0
-        return self.obs
+        return self._state, self.obs
 
     @property
     def _state(self):
@@ -101,8 +98,7 @@ class EnvWithModel(ABC):
         self._update_simulator_state()
         # Reward. Should be the reward associated with the state before step().
         reward = self.reward(prev_state, a)
-        done = self.is_done or self._i_step >= self.horizon
-        return self.obs, reward, done, {}
+        return self._state, self.obs, reward, self.is_done, {}
 
     def render(self):
         pass
@@ -130,7 +126,7 @@ class DartEnvWithModel(EnvWithModel):
         self._ob_sp = env.observation_space
         self._ac_sp = env.action_space
         self._action_scale = env.action_scale
-        self._frame_skip = env.frame_skip        
+        self._frame_skip = env.frame_skip
         self.dt = env.dt
 
         # Dart objects.
@@ -185,7 +181,7 @@ class DartEnvWithModel(EnvWithModel):
         # Damping coeff for revolute joints.
         for j in self._robot.joints:
             if isinstance(j, pydart.joint.RevoluteJoint):
-                coeff = j.damping_coefficient(0) * self._rand_ratio(inacc, self._np_rand) 
+                coeff = j.damping_coefficient(0) * self._rand_ratio(inacc, self._np_rand)
                 j.set_damping_coefficient(0, coeff)
 
     def _update_simulator_state(self):
@@ -220,10 +216,11 @@ class DartEnvWithModel(EnvWithModel):
     def _sample_initial_state(self):
         pass
 
-    def _reset(self):
+    def reset(self):
         self._dart_world.reset()
         self._state = self._robot.x
         self.set_state(self._sample_initial_state())
+        return super().reset()
 
 
 class Cartpole(DartEnvWithModel):
@@ -248,19 +245,20 @@ class Cartpole(DartEnvWithModel):
         else:
             return rew
 
-    def batch_is_done(self, obs):
+    def batch_is_done(self, obs, tms):
         sts = obs
         sts_ok = np.abs(sts[:, 1]) <= .2
         finite_ok = np.isfinite(sts).all(axis=1)
 
-        return np.logical_not(np.logical_and.reduce([sts_ok, finite_ok]))
+        return np.logical_or(np.logical_not(np.logical_and.reduce([sts_ok, finite_ok])),
+                              super().batch_is_done(obs, tms))
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
     def is_done(self):
         notdone = np.isfinite(self._state).all() and (np.abs(self._state[1]) <= .2)
         done = not notdone
-        return done
+        return super().is_done or done
 
     def _sample_initial_state(self):
         return self._np_rand.uniform(low=-.01, high=.01, size=self._robot.ndofs * 2)  # *2 for both q and dq
@@ -326,7 +324,7 @@ class Hopper(DartEnvWithModel):
             acs = np.clip(acs, *self._action_clip)
             return rew - 0.001 * np.sum(np.square(acs), axis=1)
 
-    def batch_is_done(self, obs):
+    def batch_is_done(self, obs, tms):
         sts = obs[:, :-1]
         # Assume the hieghts is the last in obs.
         heights = obs[:, -1]
@@ -337,17 +335,18 @@ class Hopper(DartEnvWithModel):
         finite_ok = np.isfinite(sts).all(axis=1)
         horizon_ok = np.array([self._i_step < self.horizon] * len(obs), dtype=bool)
 
-        return np.logical_not(np.logical_and.reduce([heights_ok, sts_ok, angles_ok,
-                                                     finite_ok, horizon_ok]))
+        return np.logical_or(np.logical_not(np.logical_and.reduce([heights_ok, sts_ok, angles_ok,
+                                                                    finite_ok, horizon_ok])),
+                              super().batch_is_done(obs, tms))
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
     def is_done(self):
         height = self._robot.bodynodes[2].com()[1]
         angle = self._state[2]
-
-        return not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100.0).all() and
+        done = not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100.0).all() and
                     height > .7 and height < 1.8 and abs(angle) < .4)
+        return super().is_done or done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -425,9 +424,10 @@ class Snake(DartEnvWithModel):
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
     def is_done(self):
-        return not (np.isfinite(self._state).all() and
+        done = not (np.isfinite(self._state).all() and
                     (np.abs(self._state[2:]) < 100.0).all() and
                     abs(self._state[2]) < 1.5)
+        return super().is_done or done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -500,8 +500,9 @@ class Dog(DartEnvWithModel):
     @DartEnvWithModel._require_robot_x_update_to_date()
     def is_done(self):
         _, height, side_deviation = self._robot.bodynodes[0].com()
-        return not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100.0).all() and
+        done = not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100.0).all() and
                     height > .7 and height < 1.8 and abs(side_deviation) < .4)
+        return super().is_done or done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -633,7 +634,7 @@ class Walker3d(DartEnvWithModel):
         done = not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100).all() and
                     (height > 1.05) and (height < 2.0) and
                     (abs(ang_uwd) < 0.84) and (abs(ang_fwd) < 0.84))
-        return done
+        return super().is_done or done
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -755,7 +756,8 @@ class Walker2d(DartEnvWithModel):
         done = not (np.isfinite(self._state).all() and (np.abs(self._state[2:]) < 100).all() and
                     (height > 1.05) and (height < 2.0) and
                     (abs(ang_uwd) < 0.84) and (abs(ang_fwd) < 0.84))
-        return done
+        return super().is_done or done
+
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -806,14 +808,14 @@ class Reacher(DartEnvWithModel):
             rew -= ac_pen
             return rew
 
-    def batch_is_done(self, obs):
+    def batch_is_done(self, obs, tms):
         assert obs.shape[1] == len(self.observation_space.high)
         finite_ok = np.logical_not(np.isnan(obs).any(axis=1))
         vec = obs[:, -3:]
         dist_ok = la.norm(vec, axis=1) > 0.1
         horizon_ok = np.array([self._i_step < self.horizon] * len(obs), dtype=bool)
         done = np.logical_not(np.logical_and.reduce([finite_ok, dist_ok, horizon_ok]))
-        return done
+        return np.logical_or(done, super().batch_is_done(obs, tms))
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
@@ -821,7 +823,7 @@ class Reacher(DartEnvWithModel):
         vec = self._robot.bodynodes[2].to_world(self.fingertip) - self.target
         dist = la.norm(vec)
         done = not (np.isfinite(self._state).all() and (dist > 0.1))
-        return done
+        return super().is_done or done        
 
     @property
     @DartEnvWithModel._require_robot_x_update_to_date()
