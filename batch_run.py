@@ -11,7 +11,7 @@ from functools import partial
 
 # Limit the number threads used by tensorflow
 import tensorflow as tf
-num_threads=16
+num_threads=8
 tf.config.threading.set_inter_op_parallelism_threads(num_threads)
 tf.config.threading.set_intra_op_parallelism_threads(num_threads)
 
