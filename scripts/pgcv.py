@@ -51,7 +51,7 @@ def main(c):
     # Create mdp for collecting extra samples for training vf.
     if c['algorithm']['train_vfn_using_sim']:
         vfn_sim = create_dartenv(bias=c['vfn_sim_bias'])
-        vfn_sim = MDP(vfn_sim, c['mdp']['mdp_kwargs'])
+        vfn_sim = MDP(vfn_sim, **c['mdp']['mdp_kwargs'])
     else:
         vfn_sim = None
 
