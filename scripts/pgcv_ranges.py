@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 
 range_common = [
-    [['seed'], [x for x in range(5)]],
-    [['exp_name'], ['cp']],
+    [['seed'], [x for x in range(4)]],
+    # [['exp_name'], ['cp']],
     [['mdp', 'mdp_kwargs', 'n_processes'], [8]],
     [['ss_sim', 'n_processes'], [8]],
 ]

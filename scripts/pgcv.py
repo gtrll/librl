@@ -47,7 +47,7 @@ def main(c):
         ss_sim = SimOne(ss_sim, n_processes=c['ss_sim']['n_processes'])
     else:
         ss_sim = None
-    
+
     # Create mdp for collecting extra samples for training vf.
     if c['algorithm']['train_vfn_using_sim']:
         vfn_sim = create_dartenv(bias=c['vfn_sim_bias'])
@@ -114,7 +114,7 @@ CONFIG = {
             'min_n_samples': 2000,
             'max_n_rollouts': None,
         },  # the sim for training vfn
-        'train_vfn_using_sim': False, 
+        'train_vfn_using_sim': False,
         'n_warm_up_itrs': None,  # policy nor update
         'n_pretrain_itrs': 1,
 
@@ -133,7 +133,7 @@ CONFIG = {
         'use_is': 'one',
     },
     'ss_sim': {
-        'type': 'learn_dyn',  # learn_dyn or biased
+        'type': 'biased',  # learn_dyn or biased
         'bias': 0.1,  # set to None to use learned dyn
         'dyn_kwargs': {
             'units': (128, 128),

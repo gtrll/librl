@@ -37,7 +37,7 @@ class SimOne(MDP):
             # Evenly put n items into m bins.
             # if n = 8, m = 4, returns (0, 4, 8)
             # if n = 10, m = 4, returns (0, 4, 8, 10)
-            idx = np.arange((n + (m-1)) // m) * m  # python 3, truncated division
+            idx = ((n + (m-1)) // m) * np.arange(m)  # python 3, truncated division
             idx[-1] = n
             return idx
 
