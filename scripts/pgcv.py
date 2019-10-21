@@ -85,7 +85,7 @@ CONFIG = {
             'save_freq': None,
         },
         'rollout_kwargs_pretrain': {
-            'min_n_samples': 1000,
+            'min_n_samples': 5000,
             'max_n_rollouts': None,
         },
         'rollout_kwargs': {
@@ -114,7 +114,7 @@ CONFIG = {
             'min_n_samples': 2000,
             'max_n_rollouts': None,
         },  # the sim for training vfn
-        'train_vfn_using_sim': False,  # XX
+        'train_vfn_using_sim': False, 
         'n_warm_up_itrs': None,  # policy nor update
         'n_pretrain_itrs': 1,
 
@@ -130,7 +130,7 @@ CONFIG = {
         'delta': 0.99,
         'lambd': 1.0,
         'max_n_batches': 0,
-        'use_is': None,
+        'use_is': 'one',
     },
     'ss_sim': {
         'type': 'learn_dyn',  # learn_dyn or biased
