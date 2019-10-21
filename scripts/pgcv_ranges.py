@@ -6,6 +6,7 @@ range_common = [
     # [['exp_name'], ['cp']],
     [['mdp', 'mdp_kwargs', 'n_processes'], [8]],
     [['ss_sim', 'n_processes'], [8]],
+    [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
 ]
 
 range_comparison = [

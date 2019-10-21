@@ -35,7 +35,7 @@ class Wrapper(gym.Wrapper):
         except ValueError:
             return False
         return True
-    
+
     def assert_class(self, cls):
         self.get_class(cls)
 
@@ -85,6 +85,8 @@ class AugDartEnv(Wrapper):
         self.bias = bias
         if not (bias is None or np.isclose(self.bias, 0.0)):
             self._perturb_physcial_params(bias)
+        self.get_obs = self.getattr_protected(DartEnv, '_get_obs')
+
     @property
     def state(self):
         return self.state_vector()
@@ -92,7 +94,8 @@ class AugDartEnv(Wrapper):
     def reset(self, state=None, tm=None):
         ob = self.env.reset()
         if state is not None:
-            ob = self.set_state_vector(state)
+            self.set_state_vector(state)
+            ob = self.get_obs()
         if tm is not None:
             self.setattr(TimeLimit, '_elapsed_steps', tm)
         return ob
@@ -123,7 +126,6 @@ class LearnDyn(Wrapper):
         super().__init__(env)
         assert isinstance(dyn_sup, SupervisedLearner)
         self.dyn_sup = dyn_sup  # predicts next state given current state and action
-        self.get_obs = self.getattr_protected(DartEnv, '_get_obs')
 
     def step(self, action):
         # Assume rw is a function of st and ac.

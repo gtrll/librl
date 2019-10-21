@@ -85,11 +85,11 @@ CONFIG = {
             'save_freq': None,
         },
         'rollout_kwargs_pretrain': {
-            'min_n_samples': 5000,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },
         'rollout_kwargs': {
-            'min_n_samples': 2000,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },
     },
@@ -111,7 +111,7 @@ CONFIG = {
             'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_sim_ro_kwargs': {
-            'min_n_samples': 2000,
+            'min_n_samples': 1000,
             'max_n_rollouts': None,
         },  # the sim for training vfn
         'train_vfn_using_sim': False,
@@ -134,7 +134,7 @@ CONFIG = {
     },
     'ss_sim': {
         'type': 'biased',  # learn_dyn or biased
-        'bias': 0.1,  # set to None to use learned dyn
+        'bias': 0.0,  # set to None to use learned dyn
         'dyn_kwargs': {
             'units': (128, 128),
             'predict_residue': True,
