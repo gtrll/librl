@@ -18,7 +18,7 @@ range_cv = [
     [['algorithm', 'or_kwargs', 'cv_decay'], [1.0]],
     [['algorithm', 'train_vfn_using_sim'], [True]],
     [['algorithm', 'vfn_sim_ro_kwargs', 'min_n_samples'], [50000]],
-    [['vfn_sim_inacc'], [0.1]],   # biased
+    [['vfn_sim_bias'], [0.1]],   # biased
 ]
 
 range_upper_bound = range_common + [
