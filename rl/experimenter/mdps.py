@@ -14,21 +14,13 @@ from rl.core.utils.mp_utils import Worker, JobRunner
 class MDP:
     """ A wrapper for gym env. """
 
-    def __init__(self, env, gamma=1.0, horizon=None, use_time_info=True, v_end=None,
+    def __init__(self, env, gamma=1.0, v_end=None,
                  n_processes=1, min_ro_per_process=1):
         self.env = env  # a gym-like env
         self.gamma = gamma
-        horizon = float('Inf') if horizon is None else horizon
-        self.horizon = horizon
-        self.use_time_info = use_time_info
 
         # configs for rollouts
-        t_state = partial(self.t_state, horizon=horizon) if use_time_info else None
-        self._gen_ro = partial(self.generate_rollout,
-                               env=self.env,
-                               v_end=v_end,
-                               t_state=t_state,
-                               max_rollout_len=horizon)
+        self._gen_ro = partial(self.generate_rollout, env=self.env, v_end=v_end)  # called in run
         self._n_processes = n_processes
         self._min_ro_per_process = int(max(1, min_ro_per_process))
 
@@ -38,10 +30,6 @@ class MDP:
         except:
             pass
 
-    @staticmethod
-    def t_state(t, horizon):
-        return t/horizon
-
     @property
     def ob_shape(self):
         return self.env.observation_space.shape
@@ -50,7 +38,8 @@ class MDP:
     def ac_shape(self):
         return self.env.action_space.shape
 
-    def run(self, agent, min_n_samples=None, max_n_rollouts=None, with_animation=False):
+    def run(self, agent, min_n_samples=None, max_n_rollouts=None, max_rollout_len=None,
+            with_animation=False):
         if self._n_processes > 1:  # parallel data collection
             if not hasattr(self, '_job_runner'):  # start the process
                 workers = [Worker(method=self._gen_ro) for _ in range(self._n_processes)]
@@ -64,6 +53,7 @@ class MDP:
                 min_n_samples = int(min_n_samples/N)
             kwargs = {'min_n_samples': min_n_samples,
                       'max_n_rollouts': max_n_rollouts,
+                      'max_rollout_len': max_rollout_len,
                       'with_animation': False}
             # start data collection
             job = ((agent,), kwargs)
@@ -72,6 +62,7 @@ class MDP:
         else:
             kwargs = {'min_n_samples': min_n_samples,
                       'max_n_rollouts': max_n_rollouts,
+                      'max_rollout_len': max_rollout_len,
                       'with_animation': with_animation}
             ro, agent = self._gen_ro(agent, **kwargs)
             ros, agents = [ro], [agent]
@@ -83,7 +74,6 @@ class MDP:
                               callback=agent.callback, **kwargs)
         return ro, agent
 
-
 class Rollout:
     """ A container for storing statistics along a trajectory.
 
@@ -94,10 +84,10 @@ class Rollout:
 
     """
 
-    def __init__(self, sts, obs, acs, rws, done, use_time_info, logp, weight=1.0):
+    def __init__(self, sts, obs, acs, rws, done, logp, weight=1.0):
         """
             `sts`, `obs`, `acs`, `rws` are lists of floats
-            `done`, `use_time_info` is bool
+            `done` is bool
             `logp` is a callable function or an nd.array
              `sts`, `obs`, `rws` can be of length of `acs` or one element longer 
              if they contain the terminal observation/reward.
@@ -111,7 +101,6 @@ class Rollout:
         self.rws = np.array(rws)
         self.dns = np.zeros((len(self)+1,))
         self.dns[-1] = float(done)
-        self.uts = np.repeat(use_time_info, len(self))
         if isinstance(logp, np.ndarray):
             assert len(logp) == len(acs)
             self.lps = logp
@@ -153,33 +142,16 @@ class Rollout:
         rws = self.rws[key]
         logp = self.lps[key]
         done = bool(self.dns[key][-1])
-        use_time_info = self.use_time_info[0]
         rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws,
-                          done=done, use_time_info=use_time_info, logp=logp)
+                          done=done, logp=logp)
         for name in self._Rollout__attrlist:
             setattr(rollout, name, copy.deepcopy(getattr(self, name)))
         return rollout
 
-def wrap_gym_env(env):
-    # Need to overload step and reset to incorporate state information.
-    env.step_old = env.step
-    env.reset_old = env.reset
-    def step(self, a):
-        res = env.step_old(a)
-        return (self.state,) + res
-    def reset(self):
-        ob = self.reset_old()
-        return self.state, ob
-    env.step = types.MethodType(step, env)
-    env.reset = types.MethodType(reset, env)
-    return env
 
 def generate_rollout(pi, logp, env,
-                     callback=None,
-                     v_end=None,
-                     t_state=None,
-                     min_n_samples=None, max_n_rollouts=None,
-                     max_rollout_len=None,
+                     callback=None, v_end=None,
+                     min_n_samples=None, max_n_rollouts=None, max_rollout_len=None,
                      with_animation=False):
     """ Collect rollouts until we have enough samples or rollouts.
 
@@ -207,9 +179,8 @@ def generate_rollout(pi, logp, env,
             `v_end`: the terminal value when the episoide ends (a callable
                      function of observation and done)
 
-            `t_state`: a function that maps time to desired features
-
-            `max_rollout_len`: the maximal length of a rollout (i.e. the problem's horizon)
+            `max_rollout_len`: the maximal length of a rollout (the problem's horizon or we 
+                               may just want to collect rollouts with some specific length)
 
             `min_n_samples`: the minimal number of samples to collect
 
@@ -219,32 +190,13 @@ def generate_rollout(pi, logp, env,
 
     """
     # Configs
-    # XX wrap env if necessary.
-    try:
-        _, _ = env.reset()
-    except ValueError:
-        env = wrap_gym_env(env)
     assert (min_n_samples is not None) or (max_n_rollouts is not None)  # so we can stop
     min_n_samples = min_n_samples or float('Inf')
     max_n_rollouts = max_n_rollouts or float('Inf')
     max_rollout_len = max_rollout_len or float('Inf')
-    max_episode_steps = getattr(env, '_max_episode_steps', float('Inf'))
-    max_rollout_len = min(max_episode_steps, max_rollout_len)
 
     if v_end is None:
         def v_end(ob, dn): return 0.
-
-    def post_process(x, t):
-        # Augment observation with time information, if needed.
-        return x if t_state is None else np.concatenate([x.flatten(), (t_state(t),)])
-
-    def step(ac, tm):
-        st, ob, rw, dn, info = env.step(ac)  # current reward, next ob and dn
-        return st, post_process(ob, tm), rw, dn, info
-
-    def reset(tm):
-        st, ob = env.reset()
-        return st, post_process(ob, tm)
 
     # Start trajectory-wise rollouts.
     n_samples = 0
@@ -254,7 +206,7 @@ def generate_rollout(pi, logp, env,
         sts, obs, acs, rws = [], [], [], []
         tm = 0  # time step
         dn = False
-        st, ob = reset(tm)
+        ob, st = env.reset()
         # each trajectory
         while True:
             if animate_this_rollout:
@@ -268,7 +220,7 @@ def generate_rollout(pi, logp, env,
             sts.append(st)
             obs.append(ob)
             acs.append(ac)
-            st, ob, rw, dn, _ = step(ac, tm)
+            ob, rw, dn, _, st = env.step(ac)
             rws.append(rw)
             tm += 1
             if dn or tm >= max_rollout_len:
@@ -278,8 +230,7 @@ def generate_rollout(pi, logp, env,
         obs.append(ob)
         rws.append(v_end(ob, dn))  # terminal reward
         # end of one rollout (`logp` is called once)
-        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws, 
-                          done=dn, use_time_info=t_state is not None, logp=logp)
+        rollout = Rollout(sts=sts, obs=obs, acs=acs, rws=rws, done=dn, logp=logp)
         if callback is not None:
             callback(rollout)
         rollouts.append(rollout)

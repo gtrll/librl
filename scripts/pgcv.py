@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import numpy as np
+from functools import partial
 from scripts.utils import parser as ps
 from rl import experimenter as Exp
-from rl.experimenter import MDP
-from rl.sims import create_sim_dartenv
+from rl.experimenter import MDP, SimOne
+from rl.sims import Dynamics
+from rl.adv_estimators.advantage_estimator import ValueBasedAE
 from rl.algorithms import PolicyGradientWithTrajCV
 from rl.core.function_approximators.policies.tf2_policies import RobustKerasMLPGassian
 from rl.core.function_approximators.supervised_learners import SuperRobustKerasMLP
@@ -13,38 +14,49 @@ from rl.core.function_approximators.supervised_learners import SuperRobustKerasM
 
 def main(c):
 
-    # Setup logz and save c
+    # Setup logz and save c.
     ps.configure_log(c)
 
-    # Create mdp and fix randomness
-    mdp = ps.setup_mdp(c['mdp'], c['seed'])
+    # Create mdp.
+    create_dartenv = partial(ps.create_dartenv,
+                             envid=c['mdp']['envid'],
+                             seed=None,
+                             use_time_info=c['mdp']['use_time_info'])
+    env = create_dartenv()
+    mdp = MDP(env, **c['mdp']['mdp_kwargs'])
+    # mdp = setup_mdp(c['mdp'], c['seed'])
 
     # Create learnable objects
     ob_shape = mdp.ob_shape
     ac_shape = mdp.ac_shape
-    if mdp.use_time_info:
-        ob_shape = (np.prod(ob_shape)+1,)
     policy = RobustKerasMLPGassian(ob_shape, ac_shape, name='policy', **c['pol_kwargs'])
     vfn = SuperRobustKerasMLP(ob_shape, (1,), name='value function', **c['vfn_kwargs'])
+    ae = ValueBasedAE(policy, vfn,
+                      gamma=mdp.gamma, horizon=env.spec.max_episode_steps,
+                      **c['ae_kwargs'])
 
     # Simulator for Single-Step simulation in TrajCV.
-    ss_sim = create_sim_dartenv(mdp.env,
-                                horizon=mdp.horizon,
-                                seed=np.random.randint(np.iinfo(np.int32).max),
-                                use_time_info=mdp.use_time_info, **c['ss_sim_kwargs'])
-
+    if c['algorithm']['or_kwargs']['cvtype'] == 'traj':
+        if c['ss_sim']['type'] == 'biased':
+            ss_sim = create_dartenv(bias=c['ss_sim']['bias'])
+        elif c['ss_sim']['type'] == 'learn_dyn':
+            dyn_sup = Dynamics(env.state.shape, ac_shape, env=env, **c['ss_sim']['dyn_kwargs'])
+            ss_sim = create_dartenv(dyn_sup=dyn_sup)
+        else:
+            raise ValueError
+        ss_sim = SimOne(ss_sim, n_processes=c['ss_sim']['n_processes'])
+    else:
+        ss_sim = None
+    
     # Create mdp for collecting extra samples for training vf.
-    vfn_sim = ps.create_dartenv(mdp.env.env.spec.id,
-                                seed=np.random.randint(np.iinfo(np.int32).max),
-                                inacc=c['vfn_sim_inacc'])
-    conf = dict(c['mdp'])
-    del conf['envid']
-    vfn_sim = MDP(vfn_sim, **conf)
+    if c['algorithm']['train_vfn_using_sim']:
+        vfn_sim = create_dartenv(bias=c['vfn_sim_bias'])
+        vfn_sim = MDP(vfn_sim, c['mdp']['mdp_kwargs'])
+    else:
+        vfn_sim = None
 
     # Create learner.
-    c['algorithm']['ae_kwargs']['gamma'] = mdp.gamma
-    c['algorithm']['ae_kwargs']['horizon'] = mdp.horizon
-    alg = PolicyGradientWithTrajCV(policy, vfn, vfn_sim=vfn_sim, ss_sim=ss_sim, **c['algorithm'])
+    alg = PolicyGradientWithTrajCV(policy, ae, vfn_sim=vfn_sim, ss_sim=ss_sim, **c['algorithm'])
 
     # Let's do some experiments!
     exp = Exp.Experimenter(alg, mdp, c['experimenter']['rollout_kwargs'],
@@ -59,10 +71,11 @@ CONFIG = {
     'mdp': {
         'envid': 'DartCartPole-v1',
         # 'envid': 'DartReacher3d-v1',
-        'horizon': 1000,  # the max length of rollouts in training
-        'gamma': 1.0,
-        'n_processes': 2,
         'use_time_info': True,
+        'mdp_kwargs': {
+            'gamma': 1.0,
+            'n_processes': 4,
+        },
     },
     'experimenter': {
         'run_kwargs': {
@@ -76,7 +89,7 @@ CONFIG = {
             'max_n_rollouts': None,
         },
         'rollout_kwargs': {
-            'min_n_samples': 1000,
+            'min_n_samples': 2000,
             'max_n_rollouts': None,
         },
     },
@@ -89,26 +102,20 @@ CONFIG = {
             'optimizer': 'rnatgrad',
             'max_kl': 0.1,
         },
-        'ae_kwargs': {
-            'delta': 0.99,
-            'lambd': 1.0,
-            'max_n_batches': 0,
-            'use_is': None,
-        },
         'or_kwargs': {
             'cvtype': 'traj',
             'n_cv_steps': None,
             'cv_decay': 1.0,
-            'n_ac_samples': 200,
+            'n_ac_samples': 10,
             'cv_onestep_weighting': False,  # to reduce bias
             'switch_from_cvtype_state_at_itr': None,
         },
         'vfn_sim_ro_kwargs': {
-            'min_n_samples': 1000,
+            'min_n_samples': 2000,
             'max_n_rollouts': None,
         },  # the sim for training vfn
-        'train_vfn_using_sim': False,
-        'n_warm_up_itrs': 0,  # policy nor update
+        'train_vfn_using_sim': False,  # XX
+        'n_warm_up_itrs': None,  # policy nor update
         'n_pretrain_itrs': 1,
 
     },
@@ -119,9 +126,15 @@ CONFIG = {
     'vfn_kwargs': {
         'units': (128, 128),
     },
-    'ss_sim_kwargs': {
-        'inacc': 0.1,  # set to None to use learned dyn
-        'n_processes': 2,  # used when biased sim is used, i.e. inacc is not None
+    'ae_kwargs': {
+        'delta': 0.99,
+        'lambd': 1.0,
+        'max_n_batches': 0,
+        'use_is': None,
+    },
+    'ss_sim': {
+        'type': 'learn_dyn',  # learn_dyn or biased
+        'bias': 0.1,  # set to None to use learned dyn
         'dyn_kwargs': {
             'units': (128, 128),
             'predict_residue': True,
@@ -130,8 +143,9 @@ CONFIG = {
             'clip': True,
             'scale': True,
         },
+        'n_processes': 4,  # used when biased sim is used, i.e. bias is not None
     },
-    'vfn_sim_inacc': 0.1,  # bias / inaccuracy in the simulator for training vfn
+    'vfn_sim_bias': 0.1,  # bias / bias in the simulator for training vfn
 }
 
 

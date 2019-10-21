@@ -6,7 +6,6 @@ import numpy as np
 import psutil
 from rl.algorithms.algorithm import Algorithm, PolicyAgent
 from rl.algorithms.utils import get_learner
-from rl.adv_estimators.advantage_estimator import ValueBasedAE
 from rl.oracles.rl_oracles_cv import ValueBasedPolicyGradientWithTrajCV
 from rl import online_learners as ol
 from rl.policies import Policy
@@ -15,14 +14,13 @@ from rl.core.utils import logz
 
 
 class PolicyGradientWithTrajCV(Algorithm):
-    def __init__(self, policy, vfn,
-                 scheduler_kwargs=None, learner_kwargs=None, ae_kwargs=None,
+    def __init__(self, policy, ae,
+                 scheduler_kwargs=None, learner_kwargs=None,
                  n_warm_up_itrs=None, n_pretrain_itrs=1,
                  train_vfn_using_sim=False, vfn_sim_ro_kwargs=None, vfn_sim=None,
                  or_kwargs=None, ss_sim=None):
         # ss_sim: Single-Step simulator to construct Q function.
         assert isinstance(policy, Policy)
-        self.vfn = vfn
         self.policy = policy
 
         # Create online learner.
@@ -33,7 +31,7 @@ class PolicyGradientWithTrajCV(Algorithm):
         # Create oracle.
         # ae is only for value function estimation, not used for adv computation,
         # therefore use_is can be set to 'one'.
-        self.ae = ValueBasedAE(policy, vfn, **ae_kwargs)
+        self.ae = ae
         self.oracle = ValueBasedPolicyGradientWithTrajCV(policy, self.ae, sim=ss_sim, **or_kwargs)
 
         # Misc.
@@ -65,10 +63,6 @@ class PolicyGradientWithTrajCV(Algorithm):
         # Aggregate data
         ro = self.merge(ros)
         evs = {}  # explained variances
-
-        # Update input normalizer for whitening.
-        if self._itr < self._n_warm_up_itrs:
-            self.policy.update(xs=ro['obs_short'])
 
         with timed('Update oracle'):
             self.oracle.update(ro, self.policy, itr=self._itr)
@@ -111,6 +105,10 @@ class PolicyGradientWithTrajCV(Algorithm):
             logz.log_tabular(name, ev)
         logz.log_tabular('memory_mb', psutil.Process().memory_info().rss / 1024.0 / 1024.0)
         self._itr += 1
+
+        # Update input normalizer for whitening.
+        if self._itr < self._n_warm_up_itrs:
+            self.policy.update(xs=ro['obs_short'])
 
     @staticmethod
     def merge(ros):

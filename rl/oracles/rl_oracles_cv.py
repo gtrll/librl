@@ -5,7 +5,7 @@
 import copy
 import numpy as np
 from scipy import linalg as la
-from rl.experimenter import SimOne
+from rl.sims import LearnDyn
 from rl.adv_estimators.advantage_estimator import ValueBasedAE
 from rl.oracles.oracle import rlOracle
 from rl.core.function_approximators.policies import Policy
@@ -14,7 +14,7 @@ from rl.core.utils.math_utils import compute_explained_variance
 
 class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def __init__(self, policy, ae, avgtype='sum',
-                 cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None,
+                 cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None, 
                  cv_onestep_weighting=False,
                  switch_from_cvtype_state_at_itr=None):
         # Consider delta and gamma, but no importance sampling capability yet.
@@ -34,9 +34,8 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._ac_dim, self._ob_dim = policy.y_shape[0], policy.x_shape[0]
         self._ro = None
 
-        self._update_vfn = (cvtype != 'nocv')
-        self._update_dyn = ((cvtype == 'traj') and (sim is not None)
-                            and hasattr(sim, 'learned_predict') and sim.learned_predict)
+        self._update_vfn = cvtype != 'nocv'
+        self._update_dyn = cvtype == 'traj' and sim is not None and sim.env.is_class(LearnDyn)
 
         # Warm up for 'traj' cvtype, first do 'state' for some iterations.
         # TEMPORARILY change cvtype.
@@ -65,11 +64,11 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
 
     def update_dyn(self, ro, **kwargs):
         if self._update_dyn:
-            obs_curr = np.concatenate([r.obs[:-1] for r in ro])
-            obs_next = np.concatenate([r.obs[1:] for r in ro])
+            sts_curr = np.concatenate([r.sts[:-1] for r in ro])
+            sts_next = np.concatenate([r.sts[1:] for r in ro])
             acs = np.concatenate([r.acs for r in ro])
-            return self._sim.predict.__self__.update(np.hstack([obs_curr, acs]),
-                                                      obs_next, **kwargs)
+            return self._sim.env.dyn_sup.update(np.hstack([sts_curr, acs]),
+                                                sts_next, **kwargs)
         return .0, .0, .0
 
     def evaluate_vfn(self, ro):
@@ -86,16 +85,11 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             vs[dones] = .0
         return vs
 
-    def approximate_qfns(self, obs, acs, tms, sts=None):
+    def approximate_qfns(self, sts, acs, tms):
         # Return a flat np array.
-        assert len(obs) == len(acs)
-        if isinstance(self._sim, SimOne):
-            assert sts is not None
-            next_obs, rws, next_dns = self._sim.run(sts, acs, tms)
-        else:
-            rws = self._sim.batch_reward(obs[:, :-1], sts=sts, acs=acs)
-            next_obs = self._sim.predict(np.hstack([obs, acs]))
-            next_dns = self._sim.batch_is_done(next_obs[:, :-1], tms+1)
+        assert sts is not None
+        assert len(sts) == len(acs) == len(tms)
+        next_obs, rws, next_dns = self._sim.run(sts, acs, tms)
         vs = self.predict_vfns(next_obs, next_dns)
         qs = rws + self._ae.delta * vs
         return qs
@@ -141,8 +135,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 # Use np array operations to avoid another for loop over steps.
                 # CV for step t.
                 tms = np.arange(len(rollout))  # T, assume the time step start from 0
-                qhat = self.approximate_qfns(rollout.obs_short, rollout.acs, tms,
-                                             sts=rollout.sts_short)  # T
+                qhat = self.approximate_qfns(rollout.sts_short, rollout.acs, tms)  # T
                 # The same randomness for all the steps to reduce variance.
                 # I: number of ac samples, rit: ac randomness in I T size.
                 rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
@@ -152,7 +145,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 ait = self._policy.derandomize(oit, rit)  # I T x d_a
                 tmsit = np.repeat(tms, self._n_ac_samples)  # I T
                 sit = np.repeat(rollout.sts_short, self._n_ac_samples, axis=0)  # I T x d_s
-                qhatit = self.approximate_qfns(oit, ait, tmsit, sts=sit)  # I T
+                qhatit = self.approximate_qfns(sit, ait, tmsit)  # I T
                 vhat = self.predict_vfns(rollout.obs_short)  # for reducing the variance of enqhat
                 vhatit = np.repeat(vhat, self._n_ac_samples, axis=0)  # I T
                 gamma_decay_it = np.repeat(gamma_decay, self._n_ac_samples, axis=0)  # I T

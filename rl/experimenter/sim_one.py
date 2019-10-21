@@ -1,48 +1,37 @@
+import pdb
 from functools import partial
 import numpy as np
 from gym.envs.dart import DartEnv
-from rl.experimenter import MDP, wrap_gym_env
+from rl.experimenter import MDP
+from rl.sims import ReturnState
 from rl.core.utils.mp_utils import Worker, JobRunner
 
 
-class SimOne:
+class SimOne(MDP):
 
-    def __init__(self, env, horizon=None, use_time_info=True, n_processes=1):
-        self.env = env
-        self.horizon = horizon
-        self.use_time_info = use_time_info
-        self._n_processes = n_processes
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._job_runner = None
-
-        t_state = partial(MDP.t_state, horizon=horizon) if use_time_info else None
-        self._sim_one = partial(self.sim_one, env=self.env, t_state=t_state)
-        assert isinstance(env.env, DartEnv)
+        self._sim_one = partial(self.sim_one, env=self.env)
+        assert self.env.is_class(ReturnState)
 
     @staticmethod
-    def sim_one(env, sts, acs, tms, t_state=None):
-        # tms is a list. use a list of None to turn it off.
+    def sim_one(env, sts, acs, tms):
         def set_and_step(st, ac, tm):
-            env.set_state(st[:len(st)//2], st[len(st)//2:])  # qpos, qvel
-            _, next_ob, rw, next_dn, info = env.step(ac)
-            if tm is not None and t_state is not None:
-                next_ob = np.concatenate([next_ob.flatten(), (t_state(tm+1),)])  # time step for next
-            return next_ob, rw, next_dn, info
+            env.reset(state=st, tm=tm)
+            next_ob, rw, next_dn, _, _ = env.step(ac)
+            return next_ob, rw, next_dn
 
-        # XX wrap env if necessary.
-        try:
-            _, _ = env.reset()
-        except ValueError:
-            env = wrap_gym_env(env)
         next_obs, rws, next_dns = [], [], []
         for st, ac, tm in zip(sts, acs, tms):
-            next_ob, rw, next_dn, _ = set_and_step(st, ac, tm)
+            next_ob, rw, next_dn  = set_and_step(st, ac, tm)
             next_obs.append(next_ob)
             rws.append(rw)
             next_dns.append(next_dn)
 
         return next_obs, rws, next_dns
 
-    def run(self, sts, acs, tms=None):
+    def run(self, sts, acs, tms):
 
         def get_idx(n, m):
             # Evenly put n items into m bins.
@@ -52,7 +41,6 @@ class SimOne:
             idx[-1] = n
             return idx
 
-        tms = [None] * len(sts) if tms is None else tms
         if self._n_processes > 1:
             if self._job_runner is None:
                 workers = [Worker(method=self._sim_one) for _ in range(self._n_processes)]
