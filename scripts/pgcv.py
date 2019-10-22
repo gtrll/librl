@@ -4,7 +4,7 @@
 from functools import partial
 from scripts.utils import parser as ps
 from rl import experimenter as Exp
-from rl.experimenter import MDP, SimOne
+from rl.experimenter import MDP, OneStepper
 from rl.sims import Dynamics
 from rl.adv_estimators.advantage_estimator import ValueBasedAE
 from rl.algorithms import PolicyGradientWithTrajCV
@@ -47,7 +47,7 @@ def main(c):
             ss_sim = create_dartenv(dyn_sup=dyn_sup)
         else:
             raise ValueError
-        ss_sim = SimOne(ss_sim, n_processes=c['ss_sim']['n_processes'])
+        ss_sim = OneStepper(ss_sim, n_processes=c['ss_sim']['n_processes'])
     else:
         ss_sim = None
 

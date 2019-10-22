@@ -43,6 +43,7 @@ class PolicyGradientWithTrajCV(Algorithm):
             n_warm_up_itrs = float('Inf')
         self._n_warm_up_itrs = n_warm_up_itrs
         self._itr = 0
+        self.ro = None
 
     def get_policy(self):
         return self.policy
@@ -63,6 +64,12 @@ class PolicyGradientWithTrajCV(Algorithm):
         # Aggregate data
         ro = self.merge(ros)
         evs = {}  # explained variances
+
+        # Update input normalizer for whitening.
+        # Using the ro from previous iteration.
+        if self.ro is not None and self._itr < self._n_warm_up_itrs:
+            self.policy.update(xs=self.ro['obs_short'])
+        self.ro = ro  # save for next round pol nor
 
         with timed('Update oracle'):
             self.oracle.update(ro, self.policy, itr=self._itr)
@@ -105,10 +112,6 @@ class PolicyGradientWithTrajCV(Algorithm):
             logz.log_tabular(name, ev)
         logz.log_tabular('memory_mb', psutil.Process().memory_info().rss / 1024.0 / 1024.0)
         self._itr += 1
-
-        # Update input normalizer for whitening.
-        if self._itr < self._n_warm_up_itrs:
-            self.policy.update(xs=ro['obs_short'])
 
     @staticmethod
     def merge(ros):

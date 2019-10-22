@@ -206,7 +206,8 @@ def generate_rollout(pi, logp, env,
         sts, obs, acs, rws = [], [], [], []
         tm = 0  # time step
         dn = False
-        ob, st = env.reset()
+        ob = env.reset()
+        st = env.state
         # each trajectory
         while True:
             if animate_this_rollout:
@@ -220,7 +221,8 @@ def generate_rollout(pi, logp, env,
             sts.append(st)
             obs.append(ob)
             acs.append(ac)
-            ob, rw, dn, _, st = env.step(ac)
+            ob, rw, dn, _ = env.step(ac)
+            st = env.state
             rws.append(rw)
             tm += 1
             if dn or tm >= max_rollout_len:

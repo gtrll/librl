@@ -40,25 +40,16 @@ class Wrapper(gym.Wrapper):
         self.get_class(cls)
 
 
-class ReturnState(Wrapper):
-    def step(self, action):
-        res = self.env.step(action)
-        return res + (self.state,)
-
-    def reset(self, **kwargs):
-        ob = self.env.reset(**kwargs)
-        return ob, self.state
-
-
 class ObWithTime(Wrapper):
-    def __init__(self, env, t_state):
+    def __init__(self, env, t_state, t_low=0.0, t_high=1.0):
         # `t_state`: a function that maps time to desired features
+        # t_low, t_high: limits of the t state.
         super().__init__(env)
         # Change the observation space.
         assert isinstance(self.observation_space, Box)
         low, high = self.observation_space.low, self.observation_space.high
         assert len(low.shape) == len(high.shape) == 1
-        low, high = np.hstack([low, 0.0]), np.hstack([high, 1.0])
+        low, high = np.hstack([low, t_low]), np.hstack([high, t_high])
         self.observation_space = Box(low, high)
         self.t_state = t_state
 

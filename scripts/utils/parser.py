@@ -56,7 +56,6 @@ def create_dartenv(envid, seed=None, use_time_info=True, bias=None, dyn_sup=None
         env = wp.LearnDyn(env, dyn_sup=dyn_sup)
     if use_time_info:
         env = wp.ObWithTime(env, t_state)
-    env = wp.ReturnState(env)
     env.seed(seed)
     return env
 

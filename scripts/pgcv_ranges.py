@@ -49,6 +49,6 @@ range_state_action = range_common + range_comparison + range_cv + [
 range_traj = range_common + range_comparison + range_cv + [
     [['algorithm', 'or_kwargs', 'cvtype'], ['traj']],
     [['algorithm', 'or_kwargs', 'n_cv_steps'], [None]],
-    [['algorithm', 'or_kwargs', 'cv_decay'], [1.0, 0.9]],
+    [['algorithm', 'or_kwargs', 'cv_decay'], [1.0]],
     [['ss_sim', 'bias'], [0.0]],
 ]
