@@ -12,11 +12,11 @@ range_common = [
 
 range_comparison = [
     [['experimenter', 'rollout_kwargs', 'min_n_samples'], [None]],
-    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [8]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [5]],
 ]
 
 range_cv = [
-    [['algorithm', 'or_kwargs', 'n_ac_samples'], [200]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [100]],
     [['algorithm', 'train_vfn_using_sim'], [True]],
     [['algorithm', 'vfn_sim_ro_kwargs', 'min_n_samples'], [50000]],
     [['vfn_sim_bias'], [0.0]],   # biased
