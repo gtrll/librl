@@ -60,19 +60,21 @@ def create_dartenv(envid, seed=None, use_time_info=True, bias=None, dyn_sup=None
     env.seed(seed)
     return env
 
-
-def setup_mdp(c, seed):
-    """ Set seed and then create an MDP. """
-    c = dict(c)
-    envid = c['envid']
-    env = create_dartenv(envid, seed)
+def fix_random(seed):
     tf.keras.backend.clear_session()
     # fix randomness
     if tf.__version__[0] == '2':
         tf.random.set_seed(seed)
     else:
         tf.set_random_seed(seed)  # graph-level seed
-    np.random.seed(seed)
+    np.random.seed(seed)    
+
+def setup_mdp(c, seed):
+    """ Set seed and then create an MDP. """
+    c = dict(c)
+    envid = c['envid']
+    env = create_dartenv(envid, seed)
+    fix_random(seed)
     del c['envid']
     mdp = MDP(env, **c)
     return mdp

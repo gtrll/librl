@@ -99,7 +99,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         isclose_kwargs = {'atol': 1e-5, 'rtol': 1e-5}
         assert np.allclose(batch_rws, ro['rws_short'], **isclose_kwargs)
 
-    def _verify_sim(self, ro): 
+    def _verify_sim(self, ro):
         next_obs, rws, next_dns = self._sim.run(ro.sts[:-1], ro.acs, np.arange(len(ro)))
         assert np.allclose(next_obs, ro.obs[1:])
         assert np.allclose(rws, ro.rws[:-1])

@@ -17,6 +17,9 @@ def main(c):
     # Setup logz and save c.
     ps.configure_log(c)
 
+    # Fix the randomness in tf and np.
+    ps.fix_random(c['seed'])
+    
     # Create mdp.
     create_dartenv = partial(ps.create_dartenv,
                              envid=c['mdp']['envid'],
