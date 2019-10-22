@@ -2,17 +2,17 @@
 # Licensed under the MIT License.
 
 range_common = [
-    [['seed'], [x for x in range(16)]],
-    [['exp_name'], ['cp']],
+    [['seed'], [x for x in range(8)]],
+    # [['exp_name'], ['cp']],
     [['mdp', 'mdp_kwargs', 'n_processes'], [4]],
-    [['mdp', 'use_time_info'], [False]],
+    [['mdp', 'use_time_info'], [True]],
     [['ss_sim', 'n_processes'], [4]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
 ]
 
 range_comparison = [
     [['experimenter', 'rollout_kwargs', 'min_n_samples'], [None]],
-    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [5]],
+    [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [8]],
 ]
 
 range_cv = [
