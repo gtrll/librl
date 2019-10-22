@@ -71,7 +71,7 @@ CONFIG = {
     'mdp': {
         'envid': 'DartCartPole-v1',
         # 'envid': 'DartReacher3d-v1',
-        'use_time_info': True,
+        'use_time_info': False,
         'mdp_kwargs': {
             'gamma': 1.0,
             'n_processes': 4,
@@ -82,6 +82,7 @@ CONFIG = {
             'n_itrs': 100,
             'pretrain': True,
             'final_eval': False,
+            'final_save': False,
             'save_freq': None,
         },
         'rollout_kwargs_pretrain': {
@@ -95,7 +96,7 @@ CONFIG = {
     },
     'algorithm': {
         'scheduler_kwargs': {
-            'eta': 0.1,
+            'eta': 0.05,
             'c': 0.01,
         },
         'learner_kwargs': {
@@ -115,7 +116,7 @@ CONFIG = {
             'max_n_rollouts': None,
         },  # the sim for training vfn
         'train_vfn_using_sim': False,
-        'n_warm_up_itrs': None,  # policy nor update
+        'n_warm_up_itrs': 0,  # policy nor update
         'n_pretrain_itrs': 1,
 
     },
@@ -127,10 +128,10 @@ CONFIG = {
         'units': (128, 128),
     },
     'ae_kwargs': {
-        'delta': 0.99,
+        'delta': 0.999,
         'lambd': 1.0,
-        'max_n_batches': 0,
-        'use_is': 'one',
+        'max_n_batches': 1,
+        'use_is': None,
     },
     'ss_sim': {
         'type': 'biased',  # learn_dyn or biased

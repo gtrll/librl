@@ -2,10 +2,11 @@
 # Licensed under the MIT License.
 
 range_common = [
-    [['seed'], [x for x in range(4)]],
-    # [['exp_name'], ['cp']],
+    [['seed'], [x for x in range(24)]],
+    [['exp_name'], ['cp']],
     [['mdp', 'mdp_kwargs', 'n_processes'], [8]],
-    [['ss_sim', 'n_processes'], [8]],
+    [['mdp', 'use_time_info'], [False]],
+    [['ss_sim', 'n_processes'], [4]],
     [['experimenter', 'rollout_kwargs_pretrain', 'min_n_samples'], [5000]],
 ]
 
@@ -15,16 +16,18 @@ range_comparison = [
 ]
 
 range_cv = [
-    [['algorithm', 'or_kwargs', 'n_ac_samples'], [100]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [200]],
     [['algorithm', 'or_kwargs', 'cv_decay'], [1.0]],
     [['algorithm', 'train_vfn_using_sim'], [True]],
     [['algorithm', 'vfn_sim_ro_kwargs', 'min_n_samples'], [50000]],
-    [['vfn_sim_bias'], [0.1]],   # biased
+    [['vfn_sim_bias'], [0.0]],   # biased
+    [['ss_sim', 'type'], ['biased']],
 ]
 
 range_upper_bound = range_common + [
-    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [50000]],
+    [['experimenter', 'rollout_kwargs', 'min_n_samples'], [5000]],  # xxx
     [['experimenter', 'rollout_kwargs', 'max_n_rollouts'], [None]],
+    [['algorithm', 'train_vfn_using_sim'], [False]],
     [['algorithm', 'or_kwargs', 'cvtype'], ['state']],
 ]
 

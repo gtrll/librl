@@ -16,7 +16,7 @@ class SimOne(MDP):
         assert self.env.is_class(ReturnState)
 
     @staticmethod
-    def sim_one(env, sts, acs, tms):
+    def sim_one(env, sts, acs, tms, jobid):
         def set_and_step(st, ac, tm):
             env.reset(state=st, tm=tm)
             next_ob, rw, next_dn, _, _ = env.step(ac)
@@ -24,12 +24,12 @@ class SimOne(MDP):
 
         next_obs, rws, next_dns = [], [], []
         for st, ac, tm in zip(sts, acs, tms):
-            next_ob, rw, next_dn  = set_and_step(st, ac, tm)
+            next_ob, rw, next_dn = set_and_step(st, ac, tm)
             next_obs.append(next_ob)
             rws.append(rw)
             next_dns.append(next_dn)
 
-        return next_obs, rws, next_dns
+        return next_obs, rws, next_dns, jobid
 
     def run(self, sts, acs, tms):
 
@@ -48,14 +48,16 @@ class SimOne(MDP):
             idx = get_idx(len(sts), self._n_processes)
             intervals = [(idx[i], idx[i+1]) for i in range(len(idx)-1)]
             jobs = []
-            for a, b in intervals:
-                kwargs = {'sts': sts[a:b], 'acs': acs[a:b], 'tms': tms[a:b]}
+            for i, (a, b) in enumerate(intervals):
+                kwargs = {'sts': sts[a:b], 'acs': acs[a:b], 'tms': tms[a:b], 'jobid': i}
                 jobs.append(([], kwargs))
             res = self._job_runner.run(jobs)
+            # Need to order res based on jobid
+            res.sort(key=lambda item: item[3])
             next_obs = np.vstack([r[0] for r in res])
             rws = np.hstack([r[1] for r in res])
             next_dns = np.hstack([r[2] for r in res])
         else:
-            kwargs = {'sts': sts, 'acs': acs, 'tms': tms}
-            next_obs, rws, next_dns = self._sim_one(**kwargs)
+            kwargs = {'sts': sts, 'acs': acs, 'tms': tms, 'jobid': 0}
+            next_obs, rws, next_dns, _ = self._sim_one(**kwargs)
         return next_obs, rws, next_dns

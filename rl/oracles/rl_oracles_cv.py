@@ -14,7 +14,7 @@ from rl.core.utils.math_utils import compute_explained_variance
 
 class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def __init__(self, policy, ae, avgtype='sum',
-                 cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None, 
+                 cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None,
                  cv_onestep_weighting=False,
                  switch_from_cvtype_state_at_itr=None):
         # Consider delta and gamma, but no importance sampling capability yet.
@@ -98,6 +98,12 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         batch_rws = self._sim.batch_reward(ro['obs_short'][:, :-1], sts=None, acs=ro['acs'])
         isclose_kwargs = {'atol': 1e-5, 'rtol': 1e-5}
         assert np.allclose(batch_rws, ro['rws_short'], **isclose_kwargs)
+
+    def _verify_sim(self, ro): 
+        next_obs, rws, next_dns = self._sim.run(ro.sts[:-1], ro.acs, np.arange(len(ro)))
+        assert np.allclose(next_obs, ro.obs[1:])
+        assert np.allclose(rws, ro.rws[:-1])
+        assert np.allclose(next_dns, ro.dns[1:])
 
     def grad(self, x):
         # Assign policy variables.
