@@ -112,14 +112,16 @@ CONFIG = {
             'cv_decay': 1.0,
             'n_ac_samples': 10,
             'cv_onestep_weighting': False,  # to reduce bias
-            'switch_from_cvtype_state_at_itr': None,
+            'switch_from_cvtype_state_at_itr': 3,
+            'enqhat_with_vfn': True,
+            'same_ac_rand': False,
         },
         'vfn_sim_ro_kwargs': {
             'min_n_samples': 1000,
             'max_n_rollouts': None,
         },  # the sim for training vfn
         'train_vfn_using_sim': False,
-        'n_warm_up_itrs': 0,  # policy nor update
+        'n_warm_up_itrs': 3,  # policy nor update
         'n_pretrain_itrs': 1,
 
     },
@@ -135,6 +137,7 @@ CONFIG = {
         'lambd': 1.0,
         'max_n_batches': 1,
         'use_is': None,
+        'pe_lambd': 1.0,
     },
     'ss_sim': {
         'type': 'biased',  # learn_dyn or biased
