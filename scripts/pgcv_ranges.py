@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 range_common = [
-    [['seed'], [x for x in range(8)]],
+    [['seed'], [x for x in range(16)]],
     # [['exp_name'], ['new-20k']],
     [['ae_kwargs', 'delta'], [0.999]],
     [['mdp', 'mdp_kwargs', 'n_processes'], [4]],
@@ -29,7 +29,7 @@ range_no_vfn_sim = [
 ]
 
 range_ac_sample = [
-    [['algorithm', 'or_kwargs', 'n_ac_samples'], [100]],
+    [['algorithm', 'or_kwargs', 'n_ac_samples'], [200]],
     [['algorithm', 'or_kwargs', 'enqhat_with_vfn'], [True]],
     [['algorithm', 'or_kwargs', 'same_ac_rand'], [False]],
     [['ss_sim', 'type'], ['biased']],
