@@ -14,12 +14,12 @@ from rl.core.utils.math_utils import compute_explained_variance
 
 class ValueBasedPolicyGradientWithTrajCV(rlOracle):
     def __init__(self, policy, ae, avgtype='sum',
-                 cvtype='state', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None,
+                 cvtype='s', n_cv_steps=1, cv_decay=1.0, n_ac_samples=100, sim=None,
                  cv_onestep_weighting=False,
                  switch_from_cvtype_state_at_itr=None,
                  same_ac_rand=False, enqhat_with_vfn=True):
         # Consider delta and gamma, but no importance sampling capability yet.
-        assert cvtype in ['nocv', 'state', 'traj']
+        assert cvtype in ['nocv', 's', 'sa', 'traj-s', 'traj-sa']
         assert isinstance(ae, ValueBasedAE)
         assert isinstance(policy, Policy)
 
@@ -36,20 +36,18 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._ro = None
         self._same_ac_rand = same_ac_rand
         self._enqhat_with_vfn = enqhat_with_vfn
-
-        self._update_vfn = cvtype != 'nocv'
-        self._update_dyn = cvtype == 'traj' and sim is not None and sim.env.is_class(LearnDyn)
+        self._update_dyn = sim is not None and sim.env.is_class(LearnDyn)
 
         # Warm up for 'traj' cvtype, first do 'state' for some iterations.
         # TEMPORARILY change cvtype.
         self._switched_back = False
-        if cvtype == 'traj' and switch_from_cvtype_state_at_itr is not None:
+        if cvtype != 'nocv' and cvtype != 's' and switch_from_cvtype_state_at_itr is not None:
             self._switch_from_cvtype_state_at_itr = switch_from_cvtype_state_at_itr
         else:
             self._switch_from_cvtype_state_at_itr = None
         if self._switch_from_cvtype_state_at_itr is not None:
             self._saved_cvtype = self._cvtype
-            self._cvtype = 'state'
+            self._cvtype = 's'
 
     def update(self, ro, policy, itr=None, **kwargs):
         if (itr is not None and self._switch_from_cvtype_state_at_itr is not None and
@@ -61,9 +59,7 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         self._ro = ro
 
     def update_vfn(self, ro, **kwargs):
-        if self._update_vfn:
-            return self._ae.update(ro, **kwargs)
-        return .0, .0, .0
+        return self._ae.update(ro, **kwargs)
 
     def update_dyn(self, ro, **kwargs):
         if self._update_dyn:
@@ -103,6 +99,24 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
         assert np.allclose(rws, ro.rws[:-1])
         assert np.allclose(next_dns, ro.dns[1:])
 
+    def sample(self, rollout):
+        # The same randomness for all the steps to reduce variance.
+        # I: number of ac samples, rit: ac randomness in I T size.
+        tms = np.arange(len(rollout))  # T, assume the time step start from 0
+        qhat = self.approximate_qfns(rollout.sts_short, rollout.acs, tms)  # T        
+        if self._same_ac_rand:
+            rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
+            rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
+        else:
+            rit = np.random.normal(size=[len(rollout) * self._n_ac_samples, self._ac_dim])
+        rit = np.exp(self._policy.lstd) * rit  # NOTE need to scale
+        oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
+        ait = self._policy.derandomize(oit, rit)  # I T x d_a
+        tmsit = np.repeat(tms, self._n_ac_samples)  # I T
+        sit = np.repeat(rollout.sts_short, self._n_ac_samples, axis=0)  # I T x d_s
+        qhatit = self.approximate_qfns(sit, ait, tmsit)  # I T
+        return oit, ait, qhat, qhatit
+        
     def grad(self, x):
         # Assign policy variables.
         self._policy.variable = x
@@ -132,28 +146,14 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
             # Difference estimators: decur and defut.
             if self._cvtype == 'nocv':
                 pass
-            elif self._cvtype == 'state':
+            if self._cvtype == 's' or self._cvtype == 'traj-s':
                 vhat = self.predict_vfns(rollout.obs_short)
                 decur += self._policy.logp_grad(rollout.obs_short, rollout.acs,
-                                                gamma_decay * cv_onestep_ws[i] * vhat)
-            elif self._cvtype == 'traj':
+                                                cv_onestep_ws[i]*gamma_decay*vhat)
+            elif self._cvtype == 'sa' or self._cvtype == 'traj-sa':
                 # Use np array operations to avoid another for loop over steps.
-                # CV for step t.
-                tms = np.arange(len(rollout))  # T, assume the time step start from 0
-                qhat = self.approximate_qfns(rollout.sts_short, rollout.acs, tms)  # T
-                # The same randomness for all the steps to reduce variance.
-                # I: number of ac samples, rit: ac randomness in I T size.
-                if self._same_ac_rand:
-                    rit = np.random.normal(size=[self._n_ac_samples, self._ac_dim])  # I x d_a
-                    rit = np.tile(rit, [len(rollout), 1])  # I T x d_a
-                else:
-                    rit = np.random.normal(size=[len(rollout) * self._n_ac_samples, self._ac_dim])
-                rit = np.exp(self._policy.lstd) * rit  # NOTE need to scale
-                oit = np.repeat(rollout.obs_short, self._n_ac_samples, axis=0)  # T x d_o -> I T x d_o
-                ait = self._policy.derandomize(oit, rit)  # I T x d_a
-                tmsit = np.repeat(tms, self._n_ac_samples)  # I T
-                sit = np.repeat(rollout.sts_short, self._n_ac_samples, axis=0)  # I T x d_s
-                qhatit = self.approximate_qfns(sit, ait, tmsit)  # I T
+                # CV for step t
+                oit, ait, qhat, qhatit = self.sample(rollout)
                 if self._enqhat_with_vfn:
                     # for reducing the variance of enqhat
                     vhat = self.predict_vfns(rollout.obs_short)
@@ -169,7 +169,10 @@ class ValueBasedPolicyGradientWithTrajCV(rlOracle):
                 nqhat = self._policy.logp_grad(rollout.obs_short, rollout.acs,
                                                cv_onestep_ws[i]*gamma_decay*qhat)  # weighting
                 decur += nqhat - enqhat
+            if 'traj' in self._cvtype:
                 # Compute gamma^t E_A [(delta*cv_decay)^{k-t} Qhat_k], for each k, for each t
+                if self._cvtype == 'traj-s':
+                    _, _, qhat, qhatit = self.sample(rollout)
                 eqhat = np.reshape(qhatit, [len(rollout), self._n_ac_samples])  # T x I
                 eqhat = np.mean(eqhat, axis=1)  # T, take average
                 # decaytt with zero diagonal terms. with shape T x T. each row is for t.

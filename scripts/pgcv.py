@@ -39,17 +39,16 @@ def main(c):
                       **c['ae_kwargs'])
 
     # Simulator for Single-Step simulation in TrajCV.
-    if c['algorithm']['or_kwargs']['cvtype'] == 'traj':
-        if c['ss_sim']['type'] == 'biased':
-            ss_sim = create_dartenv(bias=c['ss_sim']['bias'])
-        elif c['ss_sim']['type'] == 'learn_dyn':
-            dyn_sup = Dynamics(env.state.shape, ac_shape, env=env, **c['ss_sim']['dyn_kwargs'])
-            ss_sim = create_dartenv(dyn_sup=dyn_sup)
-        else:
-            raise ValueError
-        ss_sim = OneStepper(ss_sim, n_processes=c['ss_sim']['n_processes'])
-    else:
+    if c['ss_sim']['type'] == 'biased':
+        ss_sim = create_dartenv(bias=c['ss_sim']['bias'])
+    elif c['ss_sim']['type'] == 'learn_dyn':
+        dyn_sup = Dynamics(env.state.shape, ac_shape, env=env, **c['ss_sim']['dyn_kwargs'])
+        ss_sim = create_dartenv(dyn_sup=dyn_sup)
+    elif c['ss_sim']['type'] is None:
         ss_sim = None
+    else:
+        raise ValueError
+    ss_sim = OneStepper(ss_sim, n_processes=c['ss_sim']['n_processes'])
 
     # Create mdp for collecting extra samples for training vf.
     if c['algorithm']['train_vfn_using_sim']:
@@ -107,7 +106,7 @@ CONFIG = {
             'max_kl': 0.1,
         },
         'or_kwargs': {
-            'cvtype': 'traj',
+            'cvtype': 'traj-sa',
             'n_cv_steps': None,
             'cv_decay': 1.0,
             'n_ac_samples': 10,
@@ -128,19 +127,20 @@ CONFIG = {
     'pol_kwargs': {
         'units': (64,),
         'init_lstd': -1.0,
+        
     },
     'vfn_kwargs': {
         'units': (128, 128),
     },
     'ae_kwargs': {
-        'delta': 0.999,
+        'delta': 0.99,
         'lambd': 1.0,
         'max_n_batches': 1,
         'use_is': None,
         'pe_lambd': 1.0,
     },
     'ss_sim': {
-        'type': 'biased',  # learn_dyn or biased
+        'type': 'biased',  # XX, learn_dyn, biased, or None 
         'bias': 0.0,  # set to None to use learned dyn
         'dyn_kwargs': {
             'units': (128, 128),
