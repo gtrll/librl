@@ -48,7 +48,8 @@ def main(c):
         ss_sim = None
     else:
         raise ValueError
-    ss_sim = OneStepper(ss_sim, n_processes=c['ss_sim']['n_processes'])
+    if ss_sim:
+        ss_sim = OneStepper(ss_sim, n_processes=c['ss_sim']['n_processes'])
 
     # Create mdp for collecting extra samples for training vf.
     if c['algorithm']['train_vfn_using_sim']:
@@ -106,7 +107,7 @@ CONFIG = {
             'max_kl': 0.1,
         },
         'or_kwargs': {
-            'cvtype': 'traj-sa',
+            'cvtype': 's',
             'n_cv_steps': None,
             'cv_decay': 1.0,
             'n_ac_samples': 10,
@@ -140,7 +141,7 @@ CONFIG = {
         'pe_lambd': 1.0,
     },
     'ss_sim': {
-        'type': 'biased',  # XX, learn_dyn, biased, or None 
+        'type': None,  # XX, learn_dyn, biased, or None 
         'bias': 0.0,  # set to None to use learned dyn
         'dyn_kwargs': {
             'units': (128, 128),
